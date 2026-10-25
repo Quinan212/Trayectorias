@@ -1,9 +1,0 @@
-CORRECCION APLICADA
-
-- Compatible con Windows PowerShell 5.1.
-- Scripts guardados con UTF-8 BOM y mensajes ASCII.
-- Corregida la interpolacion ${exitCode}: del compilador.
-- Ruta de credencial preconfigurada:
-  C:\Users\alanm\Desktop\Credenciales\google-play-correlativas.json
-
-Use primero 1_CONFIGURAR_PRODUCCION.bat.

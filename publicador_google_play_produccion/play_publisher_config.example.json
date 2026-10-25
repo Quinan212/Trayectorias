@@ -1,8 +1,0 @@
-{
-  "package_name": "ar.maillet.correlativas_historia",
-  "service_account_json": "C:\\Credenciales\\google-play-service-account.json",
-  "track": "production",
-  "release_status": "completed",
-  "release_notes_language": "es-419",
-  "changes_in_review_behavior": "ERROR_IF_IN_REVIEW"
-}

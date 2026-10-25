@@ -1,6 +1,0 @@
-.play-publisher-venv/
-play_publisher_config.json
-logs/
-*.log
-*.json
-!play_publisher_config.example.json
