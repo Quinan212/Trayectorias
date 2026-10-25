@@ -1,143 +1,84 @@
 # Trayectorias
 
-**Tu recorrido académico, en un solo lugar.**
+**Conocé tu avance. Entendé tu plan. Organizá lo que viene.**
 
-Trayectorias es una aplicación para consultar planes de estudio y correlatividades, organizar exámenes y seguir el avance de una carrera. Se conecta con SAGE para recuperar la trayectoria académica y permite consultar los documentos obtenidos desde el dispositivo.
+Trayectorias reúne tu información académica y las herramientas para acompañarte durante la carrera: materias, correlatividades, mesas de examen, documentos y progreso. Podés explorar los planes de estudio y conectar tu cuenta de SAGE para consultar tu propio recorrido en un mismo lugar.
 
-Está desarrollada con Flutter y Dart, con interfaz en español de Argentina, temas claro y oscuro y navegación que conserva el estado entre secciones.
+## Tu carrera, a tu alcance
 
-## Qué podés hacer
+Desde **Inicio** accedés al resumen de tu trayectoria, elegís la carrera que querés consultar y encontrás tus documentos y herramientas. Las secciones **Exámenes, Plan, Materias y Datos** te permiten pasar de una vista general al detalle de lo que necesitás.
 
-| Sección | Para qué sirve |
-| --- | --- |
-| **Inicio** | Consultar un resumen de tu trayectoria, elegir la carrera activa, conectar SAGE y abrir documentos y herramientas. |
-| **Exámenes** | Consultar mesas, aplicar filtros y revisar fechas, docentes, estado y actas cuando están disponibles. |
-| **Plan** | Explorar carreras e instituciones, materias por año, requisitos y recursos del plan. |
-| **Materias** | Revisar los estados de las materias de tu trayectoria y abrir su detalle académico. |
-| **Datos** | Consultar el perfil sincronizado, las carreras y los datos de la copia local, o desincronizar la trayectoria. |
+### Conectá tu cuenta de SAGE
 
-### Conexión con SAGE
+Iniciá sesión desde la app para consultar SAGE y sincronizar la información académica disponible: tu perfil, las carreras vinculadas y el estado de tus materias.
 
-- Acceso al portal desde una vista web integrada y opción de sincronizar la trayectoria.
-- Detección de perfiles **Alumno/Estudiante** y **Agente/Docente**, con selección cuando la cuenta dispone de ambos.
-- Recuperación de la información académica disponible para el perfil estudiante, sus carreras y materias.
-- Conservación de la trayectoria en el dispositivo para consultarla al volver a abrir la app.
-- Acciones para volver a sincronizar, abrir SAGE o cerrar su sesión.
+- Accedé con los perfiles **Alumno/Estudiante** y **Agente/Docente** que tenga habilitados tu cuenta.
+- Elegí el perfil cuando tengas ambos disponibles.
+- Consultá la trayectoria estudiantil y cambiá entre las carreras sincronizadas.
+- Volvé a sincronizar cuando quieras renovar los datos.
+- Revisá los datos guardados, desincronizá la trayectoria o cerrá la sesión de SAGE desde las opciones correspondientes.
 
-Las funciones dependen de los permisos de la cuenta y de la información que entregue SAGE. El acceso como agente no implica que se ofrezcan los mismos documentos académicos del perfil estudiante.
+Los servicios y documentos disponibles dependen del perfil y de los permisos de tu cuenta en SAGE.
 
-### Documentos académicos
+### Tus documentos, sin descargarlos cada vez
 
-La app integra **Situación académica, Analítico y Libreta**. Permite consultar los datos en una pantalla nativa, ver el PDF y compartirlo o abrirlo con otra aplicación cuando existe una copia PDF disponible.
+Consultá **Situación académica, Analítico y Libreta** desde Inicio. Podés leer la información en una vista adaptada a la app o abrir el PDF, compartirlo y verlo con otra aplicación cuando el archivo está disponible.
 
-1. La primera vez se obtiene el documento desde SAGE y se conserva el PDF junto con los datos extraídos.
-2. Las siguientes aperturas utilizan la copia local válida, incluso después de cerrar y volver a abrir la app, sin repetir el acceso a SAGE.
-3. El botón **Actualizar** solicita una nueva versión. Si la operación falla o se cancela, se conserva la copia anterior.
+Una vez obtenido un documento, queda guardado para volver a abrirlo sin repetir el acceso a SAGE, incluso después de cerrar la app o sin conexión. Cuando quieras una versión nueva, usá **Actualizar**. Si la actualización falla o se cancela, conservás la copia anterior.
 
-Las copias se identifican por usuario, institución, carrera y tipo de documento. Los datos nativos pueden seguir disponibles aunque falte el archivo PDF.
+Cada documento se mantiene asociado al usuario, la institución y la carrera correspondientes.
 
-### Planes, correlatividades y herramientas
+### Entendé tu plan y sus correlatividades
 
-- Consulta de materias, requisitos y correlatividades dentro del plan de estudios.
-- **Escenarios:** probá estados de las materias y evaluá condiciones de cursada.
-- **Próximos pasos:** revisá finales pendientes, cursada activa y materias que requieren atención.
-- **Mi avance:** consultá el progreso y los estados de las materias por año.
-- **Diseños:** accedé a contenidos curriculares y recursos cuando el catálogo dispone de ellos.
-- **Ayuda:** preguntas frecuentes sobre normativa, cursada y trayectorias.
+Explorá las carreras e instituciones del catálogo y recorré las materias por año. Buscá por nombre o código y consultá los datos disponibles de cada materia: régimen, cuatrimestre, formato, carga horaria y requisitos.
 
-Las herramientas de planificación son orientativas: la información institucional y la normativa vigente determinan las condiciones académicas oficiales.
+El detalle te muestra **qué correlativas necesitás y qué materias habilita**. También podés acceder a las presentaciones, diseños curriculares y contenidos disponibles para cada carrera.
 
-### Exámenes, calendario y búsqueda
+### Seguí el estado de tus materias
 
-El calendario y el listado de exámenes comparten la misma fuente de mesas. Las modificaciones recibidas desde el servidor actualizan también los detalles y las búsquedas; las reprogramaciones utilizan la fecha y hora vigentes.
+Consultá las materias de tu trayectoria con filtros por año y estado. Identificá las **aprobadas, regulares, en curso o no regularizadas**, y abrí su detalle para ver la nota y la fecha cuando SAGE las informa.
 
-El buscador permite encontrar materias, mesas, planes, contenidos curriculares y accesos a herramientas. La navegación conserva filtros y posición de lectura en las secciones ya abiertas.
+En **Mi avance** encontrás una vista del progreso por año. En **Datos** podés revisar tu perfil, las carreras sincronizadas y la información de la trayectoria guardada.
 
-### Catálogo disponible
+### Pensá tus próximos pasos
 
-El catálogo visible incluye los profesorados de **Historia, Geografía, Ciencia Política, Artes Visuales, Educación Física y Música**.
+- **Próximos pasos:** reuní los finales pendientes, las materias en curso y las que requieren atención.
+- **Escenarios:** probá distintos estados de las correlativas y consultá cómo cambian las condiciones para cursar una materia.
+- **Mi avance:** reconocé lo que ya completaste y lo que queda en cada año de la carrera.
 
-La disponibilidad de documentos, enlaces y datos varía según carrera e institución. Existen otras carreras declaradas pero ocultas en la configuración; no se presentan como oferta disponible. Consultá la configuración en [datos_catalogo.dart](lib/compartido/proveedores/datos_catalogo.dart).
+Las consultas y simulaciones sirven para orientarte. Las condiciones académicas oficiales dependen de la normativa vigente y de tu institución.
 
-### Administración y otros módulos
+### Organizá tus exámenes
 
-El menú incluye un acceso administrativo con habilitación por dispositivo. Las operaciones y la edición contextual de mesas están sujetas a los controles de acceso existentes.
+Consultá las mesas disponibles, filtrá por carrera y revisá los detalles de cada examen: fechas, horarios, docentes, estado, avisos y actas cuando esa información está publicada.
 
-El repositorio también conserva módulos de verificación, opiniones, biblioteca, importación de mesas desde Excel e interfaces anteriores o experimentales. Su presencia en el código no significa que todos estén accesibles desde el recorrido principal. Los nombres internos `laboratorio`, `atlassian` y `react_developer` son históricos: algunas de esas carpetas contienen la interfaz pública actual.
+El **Calendario** te ayuda a ubicar las fechas y abrir el detalle de una mesa. Cuando recibís actualizaciones, los cambios se reflejan en el listado, el calendario y las búsquedas, incluidas las reprogramaciones.
 
-## Consulta sin conexión
+### Encontrá lo que necesitás
 
-La trayectoria guardada, los documentos ya obtenidos y el catálogo incluido permiten consultar información local. Conectar SAGE, obtener o actualizar documentos y recibir cambios de mesas requiere conexión. Los enlaces y recursos externos también dependen de su disponibilidad.
+El buscador reúne resultados de materias, mesas, planes, contenidos curriculares y accesos a herramientas. Podés ir directamente al resultado y seguir consultando sin perder los filtros y la posición de lectura de las secciones que ya abriste.
 
-## Desarrollo
+### Resolvé dudas sobre la cursada
 
-### Requisitos
+La sección **Ayuda** reúne preguntas frecuentes sobre normativa, cursada y trayectorias para acompañar la lectura del plan y la organización académica.
 
-- Flutter compatible con el rango de Dart declarado en [pubspec.yaml](pubspec.yaml): `>=3.12.0 <4.0.0`.
-- Para Android: Android SDK y herramientas de compilación configuradas. El proyecto declara `minSdk 24`, `compileSdk 36` y `targetSdk 36`.
-- Acceso a los servicios configurados para probar funciones remotas.
+## Carreras del catálogo
 
-Android es el destino principal de las comprobaciones documentadas. Hay proyectos de plataforma para iOS, Windows, macOS, Linux y web; su presencia no garantiza paridad funcional, especialmente en SAGE y complementos nativos.
+- Profesorado de Historia.
+- Profesorado en Geografía.
+- Profesorado en Ciencia Política.
+- Profesorado en Artes Visuales.
+- Profesorado en Educación Física.
+- Profesorado en Música.
 
-### Ejecutar el proyecto
+La información, los recursos y los documentos disponibles pueden variar según la carrera y la institución.
 
-```bash
-git clone https://github.com/Quinan212/Trayectorias.git
-cd Trayectorias
-git switch principal
-flutter pub get
-flutter run
-```
+## Consultá también sin conexión
 
-El identificador interno del paquete Dart sigue siendo `correlativas_historia`; el nombre visible de la app es **Trayectorias**. La versión y el número de compilación se declaran en `pubspec.yaml`.
+La trayectoria guardada, los documentos ya obtenidos y los planes incluidos permiten seguir consultando información local. Para conectar SAGE, sincronizar datos, obtener documentos nuevos o recibir actualizaciones de mesas necesitás conexión.
 
-### Servicios y configuración
+## Una experiencia que acompaña la consulta
 
-- **Supabase:** datos remotos, suscripciones y funciones del servidor. El cliente admite `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` y `SUPABASE_ANON_KEY` mediante `--dart-define`.
-- **Firebase:** inicialización y soporte de notificaciones según la plataforma y su configuración.
-- **SAGE:** acceso mediante WebView, detección de perfiles, extracción de información y obtención de documentos.
-- **Almacenamiento local:** preferencias, trayectoria y copias persistentes de documentos.
+Trayectorias cuenta con **modo claro y oscuro**, conserva la navegación entre sus secciones y adapta sus animaciones a la preferencia de movimiento reducido del dispositivo.
 
-Para trabajar con un backend propio, revisá las opciones del cliente y los recursos de servidor antes de ejecutar operaciones remotas. Las contraseñas de acceso y el archivo `android/key.properties` permanecen fuera del seguimiento de Git.
-
-### Verificación y compilación
-
-```bash
-flutter analyze
-flutter test
-flutter build apk --release
-```
-
-La compilación de distribución requiere la configuración de firma correspondiente. El repositorio conserva `pubspec.lock` para fijar las dependencias y una copia local de `pdfx` en `third_party/pdfx`, referenciada por el proyecto.
-
-**Revisión del 25 de octubre de 2026:** el análisis registró 0 errores, 40 advertencias y 477 observaciones informativas. La suite completa terminó con 419 pruebas correctas y 5 fallidas: dos del listado administrativo, una de la estructura del inicio, una del detalle de Educación Física y otra que requiere el archivo ausente `test/fixtures/mesas_julio_2026.xlsx`. La suite todavía no está completamente en verde.
-
-GitHub Actions ejecuta análisis y pruebas; no publica la app en Google Play. Su versión configurada de Flutter debe revisarse frente al rango de Dart requerido por el proyecto.
-
-## Organización del repositorio
-
-| Ubicación | Contenido |
-| --- | --- |
-| `lib/main.dart` | Arranque de la aplicación. |
-| `lib/compartido/` | Estado, navegación, servicios y componentes comunes. |
-| `lib/funcionalidades/` | Pantallas, modelos y lógica por función. |
-| `lib/tema/` | Temas de la aplicación. |
-| `assets/` | Catálogo, planes, imágenes y otros recursos. |
-| `test/` | Pruebas de lógica, interfaz y recorridos. |
-| `supabase/` | Migraciones y funciones del servidor. |
-| `third_party/pdfx/` | Dependencia local del visor PDF. |
-| `docs/` | Notas técnicas y verificaciones. |
-| `tool/` | Herramientas de mantenimiento del repositorio. |
-| `android/`, `ios/`, `windows/`, etc. | Proyectos de plataforma. |
-
-Las dependencias descargables, cachés, APK y otras compilaciones quedan excluidas mediante `.gitignore` y se regeneran localmente.
-
-## Documentación técnica
-
-- [Recorrido público y actualización de mesas](docs/recorrido_publico_y_sincronizacion_mesas.md).
-- [Documentos persistentes y regreso desde el buscador](docs/documentos_persistentes_y_regreso_buscador_775_2026-10-07.md).
-- [Sincronización de pantallas y movimiento](docs/sincronizacion_pantallas_y_movimiento_2026-10-07.md).
-- [Escenarios y calculadora](docs/escenarios_calculadora_775_2026-10-07.md).
-- [Reglas de conservación de UTF-8](AGENTS.md).
-
-Las notas de `docs/` describen revisiones concretas y pueden mencionar entregas o archivos de comprobación locales que no forman parte del repositorio.
+Además de la consulta para estudiantes y agentes, incluye un **acceso administrativo para dispositivos autorizados**, con herramientas de gestión y edición de mesas según los permisos correspondientes.
