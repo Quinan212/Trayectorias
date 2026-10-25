@@ -14,3 +14,6 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Clave de firma incluida por solicitud del propietario
+!app/upload-keystore.jks

@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../../../compartido/tema/tema_herramientas_app.dart';
+
 class EstilosCalculadora {
-  static const kBordeClaro = Color(0xFFD1D5DB);
+  static const kBordeClaro = Color(0xFF8291A6);
+
+  static ThemeData tema(BuildContext context) => temaHerramientasApp(context);
 
   // ===== Paletas (match leyenda/grilla) =====
   // Formación (light)
@@ -66,12 +70,12 @@ class EstilosCalculadora {
 
   static Color textoPrincipal(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return esOscuro(context) ? cs.onSurface : const Color(0xFF111827);
+    return esOscuro(context) ? cs.onSurface : const Color(0xFF172B4D);
   }
 
   static Color textoSecundario(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return esOscuro(context) ? cs.onSurfaceVariant : const Color(0xFF6B7280);
+    return esOscuro(context) ? cs.onSurfaceVariant : const Color(0xFF44546F);
   }
 
   static Color oscurecer(Color c, [double t = 0.2]) =>
@@ -82,35 +86,27 @@ class EstilosCalculadora {
       color: fondoTarjeta(context),
       borderRadius: BorderRadius.circular(16),
       border: Border.all(color: bordeTarjeta(context)),
-      boxShadow: const [
-        BoxShadow(blurRadius: 10, color: Color(0x14000000)),
-      ],
+      boxShadow: const [BoxShadow(blurRadius: 10, color: Color(0x14000000))],
     );
   }
 
-  static InputDecoration decoracionInput(
-    BuildContext context, {
-    String? hint,
-  }) {
+  static InputDecoration decoracionInput(BuildContext context, {String? hint}) {
     final cs = Theme.of(context).colorScheme;
     final isDark = esOscuro(context);
 
     return InputDecoration(
       hintText: hint,
+      hintStyle: TextStyle(color: textoSecundario(context)),
       filled: true,
       fillColor: isDark ? cs.surface : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: isDark ? cs.outlineVariant : kBordeClaro,
-        ),
+        borderSide: BorderSide(color: isDark ? cs.outlineVariant : kBordeClaro),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: isDark ? cs.outlineVariant : kBordeClaro,
-        ),
+        borderSide: BorderSide(color: isDark ? cs.outlineVariant : kBordeClaro),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -131,19 +127,19 @@ class EstilosCalculadora {
         return (
           bg: isDark ? fgDBg : fgLBg,
           bd: isDark ? fgDBd : fgLBd,
-          fg: isDark ? fgDFg : fgLFg
+          fg: isDark ? fgDFg : fgLFg,
         );
       case 'Formación Específica':
         return (
           bg: isDark ? feDBg : feLBg,
           bd: isDark ? feDBd : feLBd,
-          fg: isDark ? feDFg : feLFg
+          fg: isDark ? feDFg : feLFg,
         );
       case 'Práctica Profesional':
         return (
           bg: isDark ? ppDBg : ppLBg,
           bd: isDark ? ppDBd : ppLBd,
-          fg: isDark ? ppDFg : ppLFg
+          fg: isDark ? ppDFg : ppLFg,
         );
       default:
         return (
@@ -166,25 +162,25 @@ class EstilosCalculadora {
         return (
           bg: isDark ? fgDBg : asigLBg,
           bd: isDark ? fgDBd : asigLBd,
-          fg: isDark ? fgDFg : asigLFg
+          fg: isDark ? fgDFg : asigLFg,
         );
       case 'Seminario':
         return (
           bg: isDark ? feDBg : semLBg,
           bd: isDark ? feDBd : semLBd,
-          fg: isDark ? feDFg : semLFg
+          fg: isDark ? feDFg : semLFg,
         );
       case 'Seminario-Taller':
         return (
           bg: isDark ? ppDBg : stLBg,
           bd: isDark ? ppDBd : stLBd,
-          fg: isDark ? ppDFg : stLFg
+          fg: isDark ? ppDFg : stLFg,
         );
       case 'Taller':
         return (
           bg: isDark ? tallerDBg : tallerLBg,
           bd: isDark ? tallerDBd : tallerLBd,
-          fg: isDark ? tallerDFg : tallerLFg
+          fg: isDark ? tallerDFg : tallerLFg,
         );
       default:
         return (
@@ -205,4 +201,16 @@ class EstilosCalculadora {
       fg: cs.onSurface,
     );
   }
+}
+
+class TemaCalculadora extends StatelessWidget {
+  const TemaCalculadora({super.key, required this.builder});
+
+  final WidgetBuilder builder;
+
+  @override
+  Widget build(BuildContext context) => Theme(
+    data: EstilosCalculadora.tema(context),
+    child: Builder(builder: builder),
+  );
 }

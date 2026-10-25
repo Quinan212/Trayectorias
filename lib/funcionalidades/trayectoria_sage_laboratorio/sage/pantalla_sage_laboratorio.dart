@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
+import '../../../compartido/movimiento/movimiento_app.dart';
 import '../../acceso_estudiante/pantallas/pantalla_visor_pdf_sage.dart';
 import '../../acceso_estudiante/sage_agente/ejecutor_shell_agente_sage.dart';
 import '../../acceso_estudiante/sage_agente/extractor_agente_sage.dart';
@@ -38,14 +39,17 @@ import '../../acceso_estudiante/sage_perfiles/ejecutor_perfiles_sage.dart';
 import '../../acceso_estudiante/sage_perfiles/modelos_perfiles_sage.dart';
 import '../../acceso_estudiante/sage_perfiles/pantalla_selector_perfil_sage.dart';
 import '../componentes/tema_mensajes_laboratorio_sage.dart';
+import '../datos/repositorio_documentos_academicos_sage.dart';
 import '../datos/repositorio_estado_sincronizacion_sage.dart';
 import '../dominio/constructor_trayectoria_sage_laboratorio.dart';
 import '../libreta_pdf/extractor_libreta_calificaciones_pdf.dart';
 import '../libreta_pdf/fusionador_libreta_trayectoria.dart';
 import '../modelos/modelos_trayectoria_sage_laboratorio.dart';
+import 'actividad_webview_sage.dart';
 import 'estilo_visual_sage.dart';
 import 'modelos_sincronizacion_sage_automatica.dart';
 import 'pantalla_sincronizacion_sage_automatica.dart';
+import 'vigilancia_sage.dart';
 
 class PantallaSageLaboratorio extends StatefulWidget {
   const PantallaSageLaboratorio({
@@ -66,6 +70,7 @@ class PantallaSageLaboratorio extends StatefulWidget {
     this.onSesionAutenticada,
     this.documentoSolicitado,
     this.onDocumentoDescargado,
+    this.mostrarDocumentoAlDescargar = true,
   });
 
   final VoidCallback? onClose;
@@ -84,6 +89,7 @@ class PantallaSageLaboratorio extends StatefulWidget {
   final VoidCallback? onSesionAutenticada;
   final DocumentoAcademicoSage? documentoSolicitado;
   final ValueChanged<File>? onDocumentoDescargado;
+  final bool mostrarDocumentoAlDescargar;
 
   @override
   State<PantallaSageLaboratorio> createState() =>
@@ -97,8 +103,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   );
 
   late final WebViewController _controller;
+  ActividadWebViewSage? _webViewActivity;
   final WebViewCookieManager _cookieManager = WebViewCookieManager();
-  final http.Client _httpClient = http.Client();
+  http.Client _httpClient = http.Client();
   final ValueNotifier<int> _navigationProgress = ValueNotifier<int>(0);
   final ValueNotifier<String?> _mainFrameError = ValueNotifier<String?>(null);
   final ValueNotifier<_DownloadState> _downloadState =
@@ -114,12 +121,21 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   DateTime? _firstPageStartedAt;
   bool _isClosing = false;
   bool _appLifecycleActive = true;
+  bool _routeActive = true;
+  bool _activityUpdateScheduled = false;
+  Duration? _probeInterval;
+  DateTime? _lastProbeStarted;
+  bool _probeRequested = false;
+  int? _navigationObserversRevision;
+  int _navigationObserversGeneration = 0;
+  bool _installingNavigationObservers = false;
   bool _firstFrameReady = false;
   bool _automaticPollingStopped = false;
   bool _automaticWaitingForStudentChoice = false;
   bool _legajoPageBusy = false;
   bool _navigationProbeRunning = false;
   bool _historyProbeRunning = false;
+  bool _probeCycleRunning = false;
   bool _nativeHistoryVisible = false;
   bool _nativeModulesVisible = false;
   bool _nativeSubmodulesVisible = false;
@@ -202,12 +218,18 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   bool _automaticCompleting = false;
   int _automaticRunId = 0;
   int _automaticProfileMisses = 0;
-  Timer? _automaticWatchdog;
+  VigilanciaSage? _automaticWatchdog;
+  int _pageRevision = 0;
+  String? _loadingMainFrameUrl;
+  Uri? _lastAuthenticatedUri;
+  bool _automaticRecovering = false;
+  EstadoSincronizacionSageAutomatica? _automaticRecoveryCheckpoint;
   Timer? _automaticRetryTimer;
   final Map<PasoSincronizacionSageAutomatica, int> _automaticStepAttempts =
       <PasoSincronizacionSageAutomatica, int>{};
   EstadoPersistidoSincronizacionSage _persistedSyncState =
       const EstadoPersistidoSincronizacionSage();
+  Future<void>? _automaticMetadataLoad;
   PasoSincronizacionSageAutomatica? _automaticLastFailedStep;
   Future<void> Function()? _automaticRetryAction;
   String? _automaticRetryMessage;
@@ -221,6 +243,14 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   bool _authenticationResultDelivered = false;
   int _loginErrorObservations = 0;
   DateTime? _firstLoginErrorObservedAt;
+  bool _automaticSessionConfirmed = false;
+  bool _automaticLoginCheckBusy = false;
+  bool _automaticLoginGraceElapsed = false;
+  int _automaticLoginCheckId = 0;
+  int _automaticLoginObservations = 0;
+  Timer? _automaticLoginCheckTimer;
+  Timer? _automaticLoginStableTimer;
+  Timer? _automaticLoginTimeoutTimer;
 
   bool get _authenticationOnlyMode =>
       widget.modo == ModoPantallaSageLaboratorio.autenticacion;
@@ -241,9 +271,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     null => 'desconocido',
   };
 
-  List<PerfilSage> _supportedAutomaticProfiles(
-    CapturaPerfilesSage profiles,
-  ) {
+  List<PerfilSage> _supportedAutomaticProfiles(CapturaPerfilesSage profiles) {
     final result = <PerfilSage>[];
     for (final item in profiles.perfiles) {
       if (!item.disponible || result.contains(item.perfil)) continue;
@@ -309,6 +337,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     _automaticProfileRoutesExhausted = false;
     _automaticFallbackTarget = target;
     _automaticRunId++;
+    _navigationProbeRunning = false;
+    _historyProbeRunning = false;
+    _probeCycleRunning = false;
     _automaticRetryTimer?.cancel();
     _automaticRetryTimer = null;
     _automaticWatchdog?.cancel();
@@ -350,7 +381,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   bool get _canKeepProbeTimer {
-    if (!_appLifecycleActive || _isClosing) return false;
+    if (!_appLifecycleActive || !_routeActive || _isClosing) return false;
     if (!_automaticMode) return true;
     if (_credentialEntryActive) return false;
     return !_automaticPollingStopped;
@@ -363,8 +394,48 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
 
   bool get _shouldProbeNow {
     if (!_canKeepProbeTimer || !_firstFrameReady || !mounted) return false;
-    final route = ModalRoute.of(context);
-    return route == null || route.isCurrent;
+    return _routeActive;
+  }
+
+  bool get _sageWorkInProgress {
+    if (_automaticMode) {
+      return _canKeepProbeTimer && !_automaticWaitingForStudentChoice;
+    }
+    return _navigationProgress.value < 100 ||
+        !_showNativeSageSurface ||
+        _nativeLoadingVisible ||
+        _nativeFallbackLoading ||
+        _navigationAwaitingTransition ||
+        _profileSwitchBusy ||
+        _profileHomeResetBusy ||
+        _logoutBusy ||
+        _historyAutoLoadRunning ||
+        _historyNeedsFreshDom ||
+        _reportInFlight ||
+        _activeDownloadUri != null;
+  }
+
+  void _refreshWebViewActivity() {
+    if (!mounted || !_firstFrameReady || _isClosing) return;
+    _ensureProbeTimer();
+    unawaited(
+      _webViewActivity?.actualizar(
+        _appLifecycleActive &&
+            _routeActive &&
+            (_sageWorkInProgress ||
+                _probeCycleRunning ||
+                _installingNavigationObservers),
+      ),
+    );
+  }
+
+  void _scheduleActivityUpdate() {
+    if (_activityUpdateScheduled) return;
+    _activityUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _activityUpdateScheduled = false;
+      _refreshWebViewActivity();
+    });
   }
 
   void _debugPrintChanged(String channel, String signature, String message) {
@@ -377,9 +448,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    if (_automaticMode && !_authenticationOnlyMode) {
-      unawaited(_loadAutomaticSyncMetadata());
-      if (!_documentDownloadMode) {
+    if (_automaticMode) {
+      _automaticMetadataLoad = _loadAutomaticSyncMetadata();
+      if (!_authenticationOnlyMode && !_documentDownloadMode) {
         unawaited(_syncStateRepository.registrarIntento());
       }
     }
@@ -388,9 +459,15 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     }
     final navigationDelegate = NavigationDelegate(
       onProgress: (progress) {
+        if (!mounted || _isClosing) return;
         _navigationProgress.value = progress.clamp(0, 100);
       },
       onPageStarted: (url) {
+        if (!mounted || _isClosing) return;
+        _cancelAutomaticLoginCheck();
+        _pageRevision++;
+        _navigationObserversRevision = null;
+        _loadingMainFrameUrl = url;
         _firstPageStartedAt ??= DateTime.now();
         _navigationProgress.value = 0;
         _mainFrameError.value = null;
@@ -403,6 +480,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
             !uri.path.toLowerCase().startsWith('/login/');
         final isSageLogin = _isLoginUri(uri);
         if (mounted && isPrivatePregase) {
+          _lastAuthenticatedUri = uri;
           setState(() {
             _authTransitionCoverVisible =
                 !_automaticMode || !_automaticFlowActive;
@@ -427,7 +505,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
             }
           });
         } else if (mounted && isSageLogin) {
-          _stopProfileSwitchWatchdog();
+          if (!_automaticMode) _stopProfileSwitchWatchdog();
           setState(() {
             _authTransitionCoverVisible = true;
             _authTransitionCoverMessage = _logoutBusy
@@ -443,6 +521,8 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         }
       },
       onPageFinished: (url) {
+        if (!mounted || _isClosing) return;
+        if (_loadingMainFrameUrl != null && url != _loadingMainFrameUrl) return;
         _navigationProgress.value = 100;
         _mainFrameError.value = null;
         _logFirstPageTiming();
@@ -453,20 +533,47 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
             uri.host.toLowerCase() == 'sage.entrerios.gov.ar' &&
             uri.path.toLowerCase().startsWith('/pregase/') &&
             !uri.path.toLowerCase().startsWith('/login/');
-        _loginDocumentReady = isSageLogin;
+        _loginDocumentReady = isSageLogin && !_automaticMode;
 
         if (mounted &&
             isPrivatePregase &&
-            _authTransitionCoverVisible &&
+            (_authTransitionCoverVisible || _automaticMode) &&
             !_logoutBusy) {
-          _completeLoginTransitionToPrivate();
+          final pageRevision = _pageRevision;
+          final runId = _automaticRunId;
+          unawaited(() async {
+            try {
+              final current = await _controller.currentUrl().timeout(
+                const Duration(seconds: 5),
+              );
+              if (!mounted ||
+                  _isClosing ||
+                  _logoutBusy ||
+                  pageRevision != _pageRevision ||
+                  runId != _automaticRunId ||
+                  current != url) {
+                return;
+              }
+              _completeLoginTransitionToPrivate();
+            } catch (_) {
+              _requestSageProbe();
+            }
+          }());
         } else if (_automaticMode &&
             !isSageLogin &&
             _automaticCredentialsSubmittedThisRun &&
             !_logoutBusy) {
           unawaited(() async {
+            final pageRevision = _pageRevision;
+            final runId = _automaticRunId;
             final state = await _readLoginTransitionState();
-            if (!mounted || _logoutBusy) return;
+            if (!mounted ||
+                _logoutBusy ||
+                _isClosing ||
+                pageRevision != _pageRevision ||
+                runId != _automaticRunId) {
+              return;
+            }
             if (state['authenticated'] == true ||
                 state['privateShell'] == true) {
               _completeLoginTransitionToPrivate();
@@ -477,7 +584,12 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         unawaited(_installLoginTransitionObserver());
         _ensureProbeTimer();
 
-        if (mounted && isSageLogin && !_logoutBusy) {
+        if (isSageLogin && _automaticMode && !_logoutBusy) {
+          unawaited(_verifyAutomaticLogin());
+        } else if (isSageLogin &&
+            !_logoutBusy &&
+            !_automaticCredentialsBusy &&
+            _loginTransitionStartedAt == null) {
           setState(_resetPrivateSageStateForLogin);
         } else {
           _requestSageProbe();
@@ -493,6 +605,11 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       },
       onWebResourceError: (error) {
         if (error.isForMainFrame != true) return;
+        if (error.url != null &&
+            _loadingMainFrameUrl != null &&
+            error.url != _loadingMainFrameUrl) {
+          return;
+        }
         if (_activeDownloadUri != null) {
           _navigationProgress.value = 100;
           return;
@@ -527,13 +644,11 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         onMessageReceived: _onSageReportMessage,
       )
       ..addJavaScriptChannel(
-        'SageDiagnosticBridge',
-        onMessageReceived: _onSageDiagnosticMessage,
-      )
-      ..addJavaScriptChannel(
         'SageNavigationBridge',
         onMessageReceived: (_) {
-          unawaited(_installNavigationObservers());
+          if (!mounted || _isClosing) return;
+          _navigationObserversGeneration++;
+          _navigationObserversRevision = null;
           _scheduleNavigationProbe();
         },
       )
@@ -541,6 +656,20 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         'SageVisualBridge',
         onMessageReceived: _onSageVisualMessage,
       );
+    final platformController = _controller.platform;
+    if (platformController is AndroidWebViewController) {
+      _webViewActivity = ActividadWebViewSage(
+        identificador: platformController.webViewIdentifier,
+      );
+    }
+    if (kDebugMode) {
+      unawaited(
+        _controller.addJavaScriptChannel(
+          'SageDiagnosticBridge',
+          onMessageReceived: _onSageDiagnosticMessage,
+        ),
+      );
+    }
     if (kDebugMode &&
         Platform.isAndroid &&
         navigationDelegate.platform is AndroidNavigationDelegate) {
@@ -558,8 +687,33 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _firstFrameReady = true;
+      _refreshWebViewActivity();
       _requestSageProbe();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final active = ModalRoute.isCurrentOf(context) ?? true;
+    if (_routeActive == active) return;
+    _routeActive = active;
+    if (!active) {
+      _cancelAutomaticLoginCheck();
+      _loginTransitionWatchdog?.cancel();
+      _stopProbeTimer();
+      _navigationDebounceTimer?.cancel();
+      _probeRequested = false;
+      _automaticWatchdog?.cancel();
+    } else {
+      _ensureProbeTimer();
+      _restartAutomaticWatchdog();
+      if (_loginTransitionStartedAt != null) {
+        _scheduleLoginTransitionPoll(_loginTransitionId);
+      }
+      _scheduleNavigationProbe();
+    }
+    _refreshWebViewActivity();
   }
 
   @override
@@ -567,21 +721,30 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     final active = state == AppLifecycleState.resumed;
     _appLifecycleActive = active;
     if (!active) {
+      _cancelAutomaticLoginCheck();
+      _loginTransitionWatchdog?.cancel();
       _stopProbeTimer();
       _navigationDebounceTimer?.cancel();
+      _probeRequested = false;
       _automaticWatchdog?.cancel();
+      _refreshWebViewActivity();
       return;
     }
     _ensureProbeTimer();
     if (_automaticFlowActive && !_automaticWaitingForStudentChoice) {
       _restartAutomaticWatchdog();
     }
+    if (_loginTransitionStartedAt != null) {
+      _scheduleLoginTransitionPoll(_loginTransitionId);
+    }
     _requestSageProbe();
+    _refreshWebViewActivity();
   }
 
   void _stopProbeTimer() {
     _historyPollTimer?.cancel();
     _historyPollTimer = null;
+    _probeInterval = null;
   }
 
   void _ensureProbeTimer() {
@@ -589,11 +752,15 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       _stopProbeTimer();
       return;
     }
-    if (_historyPollTimer?.isActive == true) return;
-    _historyPollTimer = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => _requestSageProbe(),
-    );
+    final interval = _sageWorkInProgress
+        ? const Duration(seconds: 2)
+        : const Duration(seconds: 15);
+    if (_historyPollTimer?.isActive == true && _probeInterval == interval) {
+      return;
+    }
+    _stopProbeTimer();
+    _probeInterval = interval;
+    _historyPollTimer = Timer.periodic(interval, (_) => _requestSageProbe());
   }
 
   void _startProfileSwitchWatchdog(PerfilSage profile, int transitionId) {
@@ -639,26 +806,75 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     }
   }
 
-  void _requestSageProbe() {
+  void _requestSageProbe({bool rememberIfBusy = false}) {
     if (!_shouldProbeNow) return;
-    unawaited(_probeNavigationAndApply());
-    unawaited(_probeHistoryAndApply());
+    if (_probeCycleRunning) {
+      if (rememberIfBusy) _probeRequested = true;
+      return;
+    }
+    _probeRequested = false;
+    _lastProbeStarted = DateTime.now();
+    final runId = _automaticRunId;
+    _probeCycleRunning = true;
+    unawaited(() async {
+      try {
+        await _probeNavigationAndApply();
+        if (mounted && runId == _automaticRunId && _shouldProbeNow) {
+          await _probeHistoryAndApply();
+        }
+      } catch (_) {
+        // El vigilante recupera el recorrido si no se obtiene avance real.
+      } finally {
+        if (runId == _automaticRunId) {
+          _probeCycleRunning = false;
+          _refreshWebViewActivity();
+          if (_probeRequested) _scheduleNavigationProbe();
+        }
+      }
+    }());
   }
 
   void _scheduleNavigationProbe() {
     if (!_shouldProbeNow) return;
-    _navigationDebounceTimer?.cancel();
+    if (_navigationDebounceTimer?.isActive == true) return;
+    var delay = const Duration(milliseconds: 180);
+    final started = _lastProbeStarted;
+    if (started != null) {
+      final remaining =
+          const Duration(milliseconds: 500) -
+          DateTime.now().difference(started);
+      if (remaining > delay) delay = remaining;
+    }
     _navigationDebounceTimer = Timer(
-      const Duration(milliseconds: 180),
-      () => unawaited(_probeNavigationAndApply()),
+      delay,
+      () => _requestSageProbe(rememberIfBusy: true),
     );
   }
 
-  Future<String> _evaluateJavascript(String source) {
+  Future<String> _evaluateJavascript(String source) async {
+    if (_appLifecycleActive && _routeActive && mounted && !_isClosing) {
+      await _webViewActivity?.actualizar(true);
+    }
+    if (!mounted || _isClosing) {
+      throw StateError('La vista de SAGE ya se cerró.');
+    }
     return _controller
         .runJavaScriptReturningResult(source)
+        .timeout(const Duration(seconds: 5))
         .then((value) => value is String ? value : jsonEncode(value));
   }
+
+  Future<String> Function(String) _evaluatorForRun(int runId) =>
+      (source) async {
+        if (!mounted || _isClosing || runId != _automaticRunId) {
+          throw StateError('Lectura de SAGE reemplazada por otro recorrido.');
+        }
+        final result = await _evaluateJavascript(source);
+        if (!mounted || _isClosing || runId != _automaticRunId) {
+          throw StateError('Respuesta de un recorrido anterior de SAGE.');
+        }
+        return result;
+      };
 
   Future<void> _loadAutomaticSyncMetadata() async {
     final state = await _syncStateRepository.cargar();
@@ -843,10 +1059,12 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         try {
           final retryAction = action ?? () => _recoverAutomaticStep(step);
           await retryAction();
-          if (!mounted || _automaticCompleting) return;
+          if (!mounted || runId != _automaticRunId || _automaticCompleting)
+            return;
           _requestSageProbe();
           _scheduleNavigationProbe();
         } catch (_) {
+          if (!mounted || runId != _automaticRunId) return;
           _scheduleAutomaticStepRetry(
             step: step,
             message: message,
@@ -975,38 +1193,119 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   void _restartAutomaticWatchdog() {
-    _automaticWatchdog?.cancel();
     if (!_automaticMode ||
         !_automaticFlowActive ||
         _automaticCompleting ||
         !_appLifecycleActive ||
+        !_routeActive ||
         _automaticWaitingForStudentChoice ||
+        _automaticLoginStableTimer != null ||
         _automaticState.solicitaCredenciales ||
         _automaticState.esError ||
         _automaticState.completada) {
+      _automaticWatchdog?.cancel();
       return;
     }
-    final runId = _automaticRunId;
-    _automaticWatchdog = Timer(const Duration(seconds: 120), () {
-      if (!mounted ||
-          runId != _automaticRunId ||
-          !_automaticFlowActive ||
-          _automaticCompleting) {
-        return;
+    _automaticWatchdog ??= VigilanciaSage(
+      recuperar: _recoverStalledAutomaticRoute,
+      alAgotar: () {
+        if (!mounted || _isClosing) return;
+        _failAutomaticSync(
+          'SAGE no respondió después de intentar recuperar la conexión.',
+          code: CodigoErrorSincronizacionSage.tiempoAgotado,
+          step: _automaticState.paso,
+        );
+      },
+    );
+    _automaticWatchdog!.observar(
+      paso:
+          (_automaticState.paso ?? _stepForStage(_automaticState.etapa)).index,
+      progreso: _automaticState.progreso,
+    );
+  }
+
+  EstadoSincronizacionSageAutomatica get _visibleAutomaticState {
+    final checkpoint = _automaticRecoveryCheckpoint;
+    if (checkpoint != null &&
+        !_automaticState.esError &&
+        !_automaticState.solicitaCredenciales &&
+        !_automaticState.completada &&
+        (_automaticState.progreso ?? 0) < (checkpoint.progreso ?? 0)) {
+      return checkpoint;
+    }
+    return _automaticState;
+  }
+
+  Future<void> _recoverStalledAutomaticRoute() async {
+    if (!mounted ||
+        _isClosing ||
+        !_appLifecycleActive ||
+        !_routeActive ||
+        _automaticRecovering ||
+        _automaticCompleting ||
+        _automaticWaitingForStudentChoice ||
+        _automaticCredentialsBusy) {
+      return;
+    }
+    _automaticRecovering = true;
+    if ((_automaticRecoveryCheckpoint?.progreso ?? -1) <
+        (_automaticState.progreso ?? 0)) {
+      _automaticRecoveryCheckpoint = _automaticState;
+    }
+    _automaticRunId++;
+    _pageRevision++;
+    _httpClient.close();
+    _httpClient = http.Client();
+    _activeDownloadUri = null;
+    _activeDownloadStartedAt = null;
+    _downloadState.value = const _DownloadState.idle();
+    _automaticRetryTimer?.cancel();
+    _stopProbeTimer();
+    _profileTransitionId++;
+    _stopProfileSwitchWatchdog();
+    _studentAutoLandingWatchdog?.cancel();
+    _profileSwitchBusy = false;
+    _profileHomeResetBusy = false;
+    _profileSwitchTarget = null;
+    _navigationProbeRunning = false;
+    _historyProbeRunning = false;
+    _probeCycleRunning = false;
+    _historyAutoLoadRunning = false;
+    _historyAutoAttemptedCareerIds.clear();
+    _automaticDocumentsPreparing = false;
+    _automaticDocumentRequestRunning = false;
+    _reportInFlight = false;
+    final pendingReport = _pendingReportUrl;
+    _pendingReportUrl = null;
+    if (pendingReport != null && !pendingReport.isCompleted) {
+      pendingReport.completeError(StateError('Recorrido de SAGE recuperado.'));
+    }
+    _automaticPollingStopped = false;
+    _historyNeedsFreshDom = true;
+    _clearAutomaticInFlightState();
+    try {
+      // Se reutiliza la WebView y sus cookies. Un GET evita reenviar el POST
+      // de acceso y reconstruye el recorrido sin cerrar la pantalla visible.
+      final uri = _lastAuthenticatedUri ?? _initialUri;
+      await _controller.loadRequest(uri).timeout(const Duration(seconds: 5));
+    } finally {
+      _automaticRecovering = false;
+      if (mounted && !_isClosing && _appLifecycleActive) {
+        _ensureProbeTimer();
+        _requestSageProbe();
+        _scheduleNavigationProbe();
       }
-      final step = _automaticState.paso ?? _stepForStage(_automaticState.etapa);
-      _scheduleAutomaticStepRetry(
-        step: step,
-        message: 'SAGE tardó demasiado en completar este paso.',
-        code: CodigoErrorSincronizacionSage.tiempoAgotado,
-        action: () => _recoverAutomaticStep(step),
-      );
-    });
+    }
   }
 
   void _beginAutomaticFlow() {
     if (!_automaticMode || _automaticCompleting) return;
     _automaticRunId++;
+    _navigationProbeRunning = false;
+    _historyProbeRunning = false;
+    _probeCycleRunning = false;
+    _automaticWatchdog?.reiniciar();
+    _automaticRecoveryCheckpoint = null;
     _automaticRetryTimer?.cancel();
     _automaticPollingStopped = false;
     _automaticFlowActive = true;
@@ -1033,7 +1332,6 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     _lastTrajectorySignature = null;
     _manualNavigationActive = false;
     _automaticSessionReused = !_automaticCredentialsSubmittedThisRun;
-    unawaited(_syncStateRepository.registrarSesionActiva());
     _setAutomaticState(
       _automaticSessionReused
           ? EtapaSincronizacionSageAutomatica.reanudandoSesion
@@ -1088,14 +1386,16 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
 
     _automaticProfileRoutesExhausted =
         _automaticAvailableProfiles.isNotEmpty &&
-        _automaticAvailableProfiles.every(
-          _automaticAttemptedProfiles.contains,
-        );
+        _automaticAvailableProfiles.every(_automaticAttemptedProfiles.contains);
 
+    _cancelAutomaticLoginCheck();
     _automaticRunId++;
     _automaticWatchdog?.cancel();
     _automaticRetryTimer?.cancel();
     _automaticFlowActive = false;
+    _navigationProbeRunning = false;
+    _historyProbeRunning = false;
+    _probeCycleRunning = false;
     _automaticPollingStopped = true;
     _stopProbeTimer();
     _automaticActionBusy = false;
@@ -1171,12 +1471,141 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     _retryLastAutomaticStep();
   }
 
-  Future<bool> _ensureAutomaticLoginDocumentReady() async {
-    if (_loginDocumentReady) return true;
-    final current = Uri.tryParse(await _controller.currentUrl() ?? '');
-    if (!_isLoginUri(current)) {
-      await _controller.loadRequest(_initialUri);
+  void _cancelAutomaticLoginCheck() {
+    _automaticLoginCheckId++;
+    _automaticLoginCheckBusy = false;
+    _automaticLoginCheckTimer?.cancel();
+    _automaticLoginCheckTimer = null;
+    _automaticLoginStableTimer?.cancel();
+    _automaticLoginStableTimer = null;
+    _automaticLoginTimeoutTimer?.cancel();
+    _automaticLoginTimeoutTimer = null;
+    _automaticLoginGraceElapsed = false;
+    _automaticLoginObservations = 0;
+  }
+
+  void _scheduleAutomaticLoginCheck() {
+    _automaticLoginCheckTimer?.cancel();
+    _automaticLoginCheckTimer = Timer(
+      const Duration(milliseconds: 350),
+      () => unawaited(_verifyAutomaticLogin()),
+    );
+  }
+
+  /// Un callback o un iframe de login no demuestra que la sesión haya vencido.
+  /// La página actual debe sostener un formulario visible, listo y sin acceso.
+  Future<void> _verifyAutomaticLogin() async {
+    if (!_automaticMode ||
+        !mounted ||
+        _isClosing ||
+        _logoutBusy ||
+        !_appLifecycleActive ||
+        !_routeActive ||
+        _automaticCredentialsBusy ||
+        _loginTransitionStartedAt != null ||
+        _automaticLoginCheckBusy ||
+        _automaticState.solicitaCredenciales ||
+        _automaticState.completada) {
+      return;
     }
+    _automaticLoginCheckBusy = true;
+    final checkId = _automaticLoginCheckId;
+    final runId = _automaticRunId;
+    final pageRevision = _pageRevision;
+    bool vigente() =>
+        mounted &&
+        !_isClosing &&
+        !_logoutBusy &&
+        checkId == _automaticLoginCheckId &&
+        runId == _automaticRunId &&
+        pageRevision == _pageRevision;
+    _automaticLoginTimeoutTimer ??= Timer(const Duration(seconds: 30), () {
+      if (!vigente()) return;
+      _cancelAutomaticLoginCheck();
+      _failAutomaticSync(
+        'SAGE no terminó de confirmar la sesión. Intentá nuevamente.',
+        code: CodigoErrorSincronizacionSage.tiempoAgotado,
+        step: _automaticState.paso,
+      );
+    });
+    try {
+      await _automaticMetadataLoad;
+      if (!vigente()) return;
+      final currentUrl = await _controller.currentUrl().timeout(
+        const Duration(seconds: 5),
+      );
+      final state = await _readLoginTransitionState();
+      if (!vigente()) return;
+      final uri = Uri.tryParse(currentUrl ?? '');
+      final autenticado =
+          state['authenticated'] == true || state['privateShell'] == true;
+      if (autenticado ||
+          (!_isLoginUri(uri) &&
+              uri?.host.toLowerCase() == 'sage.entrerios.gov.ar' &&
+              uri!.path.startsWith('/pregase/'))) {
+        _completeLoginTransitionToPrivate();
+        return;
+      }
+      if (!_isLoginUri(uri)) {
+        _cancelAutomaticLoginCheck();
+        _loginDocumentReady = false;
+        _restartAutomaticWatchdog();
+        return;
+      }
+      final path = state['pathname']?.toString().toLowerCase() ?? '';
+      final estable =
+          _navigationProgress.value >= 100 &&
+          state['readyState'] == 'complete' &&
+          state['loginFormVisible'] == true &&
+          (path == '/login' || path.startsWith('/login/'));
+      if (!estable) {
+        _automaticLoginStableTimer?.cancel();
+        _automaticLoginStableTimer = null;
+        _automaticLoginGraceElapsed = false;
+        _automaticLoginObservations = 0;
+        _restartAutomaticWatchdog();
+        _scheduleAutomaticLoginCheck();
+        return;
+      }
+      _automaticLoginObservations++;
+      // La comprobación tiene su propio límite. El vigilante del recorrido
+      // no debe recargar SAGE mientras se confirma una pérdida real de sesión.
+      _automaticWatchdog?.cancel();
+      _automaticLoginStableTimer ??= Timer(
+        (_automaticSessionConfirmed || _persistedSyncState.sesionConfirmada)
+            ? const Duration(seconds: 5)
+            : const Duration(milliseconds: 800),
+        () {
+          if (!vigente()) return;
+          _automaticLoginGraceElapsed = true;
+          unawaited(_verifyAutomaticLogin());
+        },
+      );
+      if (_automaticLoginGraceElapsed && _automaticLoginObservations >= 3) {
+        final sesionVencida =
+            _automaticSessionConfirmed || _persistedSyncState.sesionConfirmada;
+        setState(_resetPrivateSageStateForLogin);
+        if (sesionVencida) {
+          _failAutomaticSync(
+            'La sesión de SAGE venció. Iniciá sesión nuevamente.',
+            loginAvailable: true,
+            code: CodigoErrorSincronizacionSage.sesionVencida,
+            step: PasoSincronizacionSageAutomatica.sesion,
+          );
+        }
+        return;
+      }
+      _scheduleAutomaticLoginCheck();
+    } catch (_) {
+      if (vigente()) _scheduleAutomaticLoginCheck();
+    } finally {
+      if (checkId == _automaticLoginCheckId) _automaticLoginCheckBusy = false;
+    }
+  }
+
+  Future<bool> _ensureAutomaticLoginDocumentReady() async {
+    // La página inicial ya se carga al abrir la WebView. No se fuerza otra
+    // navegación: podría interrumpir una sesión que acaba de autenticarse.
     for (var attempt = 0; attempt < 40; attempt++) {
       if (!mounted || _isClosing) return false;
       final state = await _readLoginTransitionState();
@@ -1184,7 +1613,10 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         _completeLoginTransitionToPrivate();
         return false;
       }
-      if (state['loginFormVisible'] == true || state['loginForm'] == true) {
+      if (state['loginFormVisible'] == true &&
+          (state['readyState'] == 'complete' ||
+              state['readyState'] == 'interactive') &&
+          _navigationProgress.value == 100) {
         if (mounted) setState(() => _loginDocumentReady = true);
         return true;
       }
@@ -1197,36 +1629,43 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     String usuario,
     String password,
   ) async {
-    if (!_automaticMode || _automaticCredentialsBusy) return;
-    if (!await _ensureAutomaticLoginDocumentReady()) {
-      if (mounted && !_privateSageShellActive) {
-        _failAutomaticSync(
-          'SAGE todavía no mostró el formulario de acceso.',
-          loginAvailable: true,
-          code: CodigoErrorSincronizacionSage.estructuraIncompatible,
-          step: PasoSincronizacionSageAutomatica.sesion,
-        );
-      }
-      return;
-    }
-    final userJson = jsonEncode(usuario.trim());
-    final passwordJson = jsonEncode(password);
-    _automaticCredentialsSubmittedThisRun = true;
-    _automaticPollingStopped = false;
-    _automaticSessionReused = false;
-    _loginErrorObservations = 0;
-    _firstLoginErrorObservedAt = null;
+    if (!_automaticMode || _automaticCredentialsBusy || !mounted) return;
+    _cancelAutomaticLoginCheck();
+    // El bloqueo empieza antes de esperar al DOM: dos toques no envían
+    // credenciales en paralelo ni compiten con la comprobación de sesión.
     setState(() => _automaticCredentialsBusy = true);
-    _ensureProbeTimer();
-    _setAutomaticState(
-      EtapaSincronizacionSageAutomatica.autenticando,
-      'Iniciando sesión',
-      detalle: 'Validando tus credenciales…',
-      progreso: 0.12,
-    );
-
     try {
-      final raw = await _evaluateJavascript('''(() => {
+      if (!await _ensureAutomaticLoginDocumentReady()) {
+        if (mounted && !_isClosing && !_privateSageShellActive) {
+          _failAutomaticSync(
+            'SAGE todavía está preparando el acceso. Intentá nuevamente.',
+            loginAvailable: true,
+            code: CodigoErrorSincronizacionSage.tiempoAgotado,
+            step: PasoSincronizacionSageAutomatica.sesion,
+          );
+        }
+        return;
+      }
+      if (!mounted || _isClosing || _privateSageShellActive) return;
+      final userJson = jsonEncode(usuario.trim());
+      final passwordJson = jsonEncode(password);
+      _automaticCredentialsSubmittedThisRun = true;
+      _automaticPollingStopped = false;
+      _automaticSessionReused = false;
+      _loginErrorObservations = 0;
+      _firstLoginErrorObservedAt = null;
+      _ensureProbeTimer();
+      _setAutomaticState(
+        EtapaSincronizacionSageAutomatica.autenticando,
+        'Iniciando sesión',
+        detalle: 'Validando tus credenciales…',
+        progreso: 0.12,
+      );
+      var submitted = false;
+      // Los iframes pueden reemplazar el formulario después de detectarlo.
+      // Sólo se repite si no hubo envío; nunca se repite un POST confirmado.
+      for (var intento = 0; intento < 25 && mounted && !_isClosing; intento++) {
+        final raw = await _evaluateJavascript('''(() => {
         const userValue = $userJson;
         const passwordValue = $passwordJson;
         const normalize = value => String(value || '')
@@ -1327,16 +1766,32 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           passwordName:String(passwordInput.name || passwordInput.id || ''),
         });
       })()''');
-      dynamic decoded = jsonDecode(raw);
-      if (decoded is String) decoded = jsonDecode(decoded);
-      final result = decoded is Map
-          ? Map<String, dynamic>.from(decoded)
-          : const <String, dynamic>{};
-      if (result['found'] != true || result['submitted'] != true) {
+
+        dynamic decoded = jsonDecode(raw);
+        if (decoded is String) decoded = jsonDecode(decoded);
+        final result = decoded is Map
+            ? Map<String, dynamic>.from(decoded)
+            : const <String, dynamic>{};
+        if (result['submitted'] == true) {
+          submitted = true;
+          break;
+        }
+        final state = await _readLoginTransitionState();
+        if (!mounted || _isClosing) return;
+        if (state['authenticated'] == true ||
+            state['privateShell'] == true ||
+            _privateSageShellActive) {
+          _completeLoginTransitionToPrivate();
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+      if (!mounted || _isClosing || _privateSageShellActive) return;
+      if (!submitted) {
         _failAutomaticSync(
-          'No se encontraron los controles de acceso de SAGE.',
+          'SAGE no terminó de preparar el formulario de acceso.',
           loginAvailable: true,
-          code: CodigoErrorSincronizacionSage.estructuraIncompatible,
+          code: CodigoErrorSincronizacionSage.tiempoAgotado,
           step: PasoSincronizacionSageAutomatica.sesion,
         );
         return;
@@ -1348,12 +1803,24 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       });
       _startLoginTransitionWatchdog();
     } catch (_) {
-      _failAutomaticSync(
-        'No se pudo enviar el inicio de sesión a SAGE.',
-        loginAvailable: true,
-        code: CodigoErrorSincronizacionSage.red,
-        step: PasoSincronizacionSageAutomatica.sesion,
-      );
+      if (!mounted || _isClosing || _privateSageShellActive) return;
+      // Una navegación iniciada al enviar el formulario puede interrumpir
+      // JavaScript aunque SAGE haya aceptado el acceso. Se confirma primero.
+      final state = await _readLoginTransitionState();
+      if (!mounted || _isClosing) return;
+      if (state['authenticated'] == true || state['privateShell'] == true) {
+        _completeLoginTransitionToPrivate();
+      } else if (_navigationProgress.value < 100 ||
+          _authTransitionCoverVisible) {
+        _startLoginTransitionWatchdog();
+      } else {
+        _failAutomaticSync(
+          'No se pudo enviar el inicio de sesión a SAGE.',
+          loginAvailable: true,
+          code: CodigoErrorSincronizacionSage.red,
+          step: PasoSincronizacionSageAutomatica.sesion,
+        );
+      }
     } finally {
       if (mounted) setState(() => _automaticCredentialsBusy = false);
     }
@@ -1551,15 +2018,17 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       expected?.dni ?? _persistedSyncState.dniPerfil ?? '',
     );
     if (expectedDni.isNotEmpty) {
-      final matches = records.where((record) {
-        final digits = _digitsOnly(
-          <String>[
-            record.nombreVisible,
-            ...record.camposVisibles.values,
-          ].join(' '),
-        );
-        return digits.contains(expectedDni);
-      }).toList(growable: false);
+      final matches = records
+          .where((record) {
+            final digits = _digitsOnly(
+              <String>[
+                record.nombreVisible,
+                ...record.camposVisibles.values,
+              ].join(' '),
+            );
+            return digits.contains(expectedDni);
+          })
+          .toList(growable: false);
       if (matches.length == 1) return matches.first;
     }
 
@@ -1568,9 +2037,12 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     );
     if (expectedName.isEmpty) return null;
 
-    final exactMatches = records.where((record) {
-      return _normalizeAutomaticIdentity(record.nombreVisible) == expectedName;
-    }).toList(growable: false);
+    final exactMatches = records
+        .where((record) {
+          return _normalizeAutomaticIdentity(record.nombreVisible) ==
+              expectedName;
+        })
+        .toList(growable: false);
     if (exactMatches.length == 1) return exactMatches.first;
 
     final expectedTokens = expectedName
@@ -1579,16 +2051,18 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         .toList(growable: false);
     if (expectedTokens.length < 2) return null;
 
-    final tokenMatches = records.where((record) {
-      final searchable = _normalizeAutomaticIdentity(
-        <String>[
-          record.nombreVisible,
-          ...record.camposVisibles.keys,
-          ...record.camposVisibles.values,
-        ].join(' '),
-      );
-      return expectedTokens.every(searchable.contains);
-    }).toList(growable: false);
+    final tokenMatches = records
+        .where((record) {
+          final searchable = _normalizeAutomaticIdentity(
+            <String>[
+              record.nombreVisible,
+              ...record.camposVisibles.keys,
+              ...record.camposVisibles.values,
+            ].join(' '),
+          );
+          return expectedTokens.every(searchable.contains);
+        })
+        .toList(growable: false);
     return tokenMatches.length == 1 ? tokenMatches.first : null;
   }
 
@@ -1656,20 +2130,11 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       return false;
     }
 
+    final runId = _automaticRunId;
+
     if (navigation.estado == EstadoNavegacionSage.login ||
         navigation.estado == EstadoNavegacionSage.sesionVencida) {
-      final expired = navigation.estado == EstadoNavegacionSage.sesionVencida;
-      _automaticSessionReused = false;
-      _failAutomaticSync(
-        expired
-            ? 'La sesión de SAGE venció. Iniciá sesión nuevamente.'
-            : 'Ingresá tus credenciales para continuar.',
-        loginAvailable: true,
-        code: expired
-            ? CodigoErrorSincronizacionSage.sesionVencida
-            : CodigoErrorSincronizacionSage.credenciales,
-        step: PasoSincronizacionSageAutomatica.sesion,
-      );
+      await _verifyAutomaticLogin();
       return true;
     }
 
@@ -1763,7 +2228,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         try {
           await _selectProfile(target);
         } finally {
-          _automaticActionBusy = false;
+          if (runId == _automaticRunId) {
+            _automaticActionBusy = false;
+          }
         }
         return true;
       }
@@ -1910,7 +2377,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           try {
             await _activateLegajoProfile(record);
           } finally {
-            _automaticActionBusy = false;
+            if (runId == _automaticRunId) {
+              _automaticActionBusy = false;
+            }
           }
           return true;
         case EtapaLegajoSage.secciones:
@@ -1936,7 +2405,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           try {
             await _activateLegajoSection(school);
           } finally {
-            _automaticActionBusy = false;
+            if (runId == _automaticRunId) {
+              _automaticActionBusy = false;
+            }
           }
           return true;
         case EtapaLegajoSage.escolares:
@@ -1960,7 +2431,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           try {
             await _activateEscolarOption(history);
           } finally {
-            _automaticActionBusy = false;
+            if (runId == _automaticRunId) {
+              _automaticActionBusy = false;
+            }
           }
           return true;
         case EtapaLegajoSage.ninguna:
@@ -1988,7 +2461,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           );
           if (!opened) return true;
         } finally {
-          _automaticActionBusy = false;
+          if (runId == _automaticRunId) {
+            _automaticActionBusy = false;
+          }
         }
         return true;
       case EstadoNavegacionSage.submodulosLegajoUnico:
@@ -2003,7 +2478,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           final opened = await _activateSageLink(opcionesSubmodulosSage.first);
           if (!opened) return true;
         } finally {
-          _automaticActionBusy = false;
+          if (runId == _automaticRunId) {
+            _automaticActionBusy = false;
+          }
         }
         return true;
       case EstadoNavegacionSage.listadoLegajos:
@@ -2123,6 +2600,12 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   void _onSageVisualMessage(JavaScriptMessage message) {
     if (!mounted || _isClosing) return;
     if (message.message != 'login-submit') return;
+    if (_automaticMode &&
+        _automaticSessionConfirmed &&
+        !_automaticState.solicitaCredenciales &&
+        !_automaticCredentialsBusy) {
+      return;
+    }
     setState(() {
       _authTransitionCoverVisible = true;
       _authTransitionCoverMessage = 'Iniciando sesión…';
@@ -2132,6 +2615,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   void _cancelLoginTransitionWatchdog() {
+    _cancelAutomaticLoginCheck();
     _loginTransitionId++;
     _loginTransitionWatchdog?.cancel();
     _loginTransitionWatchdog = null;
@@ -2139,6 +2623,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   void _startLoginTransitionWatchdog() {
+    if (_loginTransitionStartedAt != null) {
+      return;
+    }
     final transitionId = ++_loginTransitionId;
     _loginTransitionWatchdog?.cancel();
     _loginTransitionStartedAt = DateTime.now();
@@ -2147,6 +2634,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
 
   void _scheduleLoginTransitionPoll(int transitionId) {
     _loginTransitionWatchdog?.cancel();
+    if (!_appLifecycleActive || !_routeActive || _isClosing) return;
     _loginTransitionWatchdog = Timer(
       const Duration(milliseconds: 350),
       () => unawaited(_pollLoginTransition(transitionId)),
@@ -2305,8 +2793,12 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   void _completeLoginTransitionToPrivate() {
-    if (!mounted || _logoutBusy) return;
+    if (!mounted || _logoutBusy || _isClosing) return;
     _cancelLoginTransitionWatchdog();
+    if (_automaticMode && !_automaticSessionConfirmed) {
+      unawaited(_syncStateRepository.registrarSesionActiva());
+    }
+    _automaticSessionConfirmed = true;
     _loginErrorObservations = 0;
     _firstLoginErrorObservedAt = null;
     setState(() {
@@ -2325,6 +2817,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       if (!_automaticFlowActive && !_automaticCompleting) {
         _beginAutomaticFlow();
       } else {
+        _restartAutomaticWatchdog();
         _requestSageProbe();
         _scheduleNavigationProbe();
       }
@@ -2350,6 +2843,8 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   Future<void> _pollLoginTransition(int transitionId) async {
     if (!mounted ||
         _isClosing ||
+        !_appLifecycleActive ||
+        !_routeActive ||
         _logoutBusy ||
         transitionId != _loginTransitionId ||
         !_authTransitionCoverVisible) {
@@ -2359,6 +2854,8 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     final state = await _readLoginTransitionState();
 
     if (!mounted ||
+        !_appLifecycleActive ||
+        !_routeActive ||
         transitionId != _loginTransitionId ||
         !_authTransitionCoverVisible) {
       return;
@@ -2375,10 +2872,18 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       final errorElapsed = DateTime.now().difference(
         _firstLoginErrorObservedAt!,
       );
-      final confirmed =
-          _loginErrorObservations >= 3 &&
-          errorElapsed >= const Duration(milliseconds: 1100) &&
-          state['loginFormVisible'] == true;
+      final confirmed = rechazoCredencialesConfirmadoSage(
+        autenticado:
+            state['authenticated'] == true || state['privateShell'] == true,
+        formularioVisible: state['loginFormVisible'] == true,
+        documentoListo: state['readyState'] == 'complete',
+        navegando: _navigationProgress.value < 100,
+        observaciones: _loginErrorObservations,
+        desdeEnvio: DateTime.now().difference(
+          _loginTransitionStartedAt ?? DateTime.now(),
+        ),
+        errorPersistente: errorElapsed,
+      );
       if (!confirmed) {
         _scheduleLoginTransitionPoll(transitionId);
         return;
@@ -2501,16 +3006,27 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   Future<void> _installNavigationObservers() async {
+    if (!_shouldProbeNow ||
+        _installingNavigationObservers ||
+        _navigationObserversRevision == _pageRevision) {
+      return;
+    }
+    _installingNavigationObservers = true;
+    final revision = _pageRevision;
+    final generation = _navigationObserversGeneration;
     try {
-      await _evaluateJavascript(r'''(() => {
+      final installed = await _evaluateJavascript(r'''(() => {
         const root = window;
         const bridge = root.SageNavigationBridge;
         if (!bridge || typeof bridge.postMessage !== 'function') return false;
         const notify = (() => {
           let timer = null;
           return () => {
-            clearTimeout(timer);
-            timer = setTimeout(() => bridge.postMessage('changed'), 120);
+            if (timer !== null) return;
+            timer = setTimeout(() => {
+              timer = null;
+              bridge.postMessage('changed');
+            }, 120);
           };
         })();
         const seen = new Set();
@@ -2544,10 +3060,18 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         install(root);
         return true;
       })()''');
+      if (installed == 'true' &&
+          revision == _pageRevision &&
+          generation == _navigationObserversGeneration) {
+        _navigationObserversRevision = revision;
+      }
     } catch (_) {
       if (kDebugMode) {
         debugPrint('[SAGE navegación] observer_install=false');
       }
+    } finally {
+      _installingNavigationObservers = false;
+      _refreshWebViewActivity();
     }
   }
 
@@ -2651,6 +3175,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   Future<void> _installReportDiagnostics() async {
+    if (!kDebugMode) return;
     try {
       await _evaluateJavascript(r'''(() => {
         const root = window;
@@ -2844,14 +3369,42 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   Future<void> _probeNavigationAndApply() async {
-    if (_navigationProbeRunning || _isClosing) return;
+    if (_navigationProbeRunning || !_shouldProbeNow) return;
     _navigationProbeRunning = true;
+    final runId = _automaticRunId;
+    final pageRevision = _pageRevision;
     try {
       final result = await _probeSageNavigation();
+      if (!_shouldProbeNow ||
+          runId != _automaticRunId ||
+          pageRevision != _pageRevision) {
+        return;
+      }
+      if (_automaticMode &&
+          (result.estado == EstadoNavegacionSage.login ||
+              result.estado == EstadoNavegacionSage.sesionVencida)) {
+        await _verifyAutomaticLogin();
+        return;
+      }
       final legajoResult = await _probeLegajoIfRelevant(result);
+      if (!_shouldProbeNow ||
+          runId != _automaticRunId ||
+          pageRevision != _pageRevision) {
+        return;
+      }
       _confirmPendingStudentRecordIfNeeded(result, legajoResult);
       final agentHome = await _probeAgentHome();
+      if (!_shouldProbeNow ||
+          runId != _automaticRunId ||
+          pageRevision != _pageRevision) {
+        return;
+      }
       final agentPersonal = await _probeAgentPersonal();
+      if (!_shouldProbeNow ||
+          runId != _automaticRunId ||
+          pageRevision != _pageRevision) {
+        return;
+      }
       final profiles =
           result.estado == EstadoNavegacionSage.login ||
               result.estado == EstadoNavegacionSage.sesionVencida
@@ -2859,6 +3412,11 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           : await _probeProfiles(
               openPanelIfNeeded: !_profileChoiceMade && !_profileSwitchBusy,
             );
+      if (!_shouldProbeNow ||
+          runId != _automaticRunId ||
+          pageRevision != _pageRevision) {
+        return;
+      }
       _profileCapture = profiles;
       unawaited(_installNavigationObservers());
       if (!mounted) return;
@@ -3136,7 +3694,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         _applyLegajoResult(legajoResult);
       });
     } finally {
-      _navigationProbeRunning = false;
+      if (runId == _automaticRunId) _navigationProbeRunning = false;
     }
   }
 
@@ -3359,6 +3917,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   Future<void> _selectProfile(PerfilSage profile) async {
     if (_profileSwitchBusy || _profileHomeResetBusy || _logoutBusy) return;
 
+    final runId = _automaticRunId;
     _cancelStudentAutomaticLanding();
     final transitionId = ++_profileTransitionId;
     final current = _profileCapture?.activo ?? _selectedProfile;
@@ -3417,7 +3976,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     ResultadoCambioPerfilSage dispatch;
     try {
       dispatch = await EjecutorPerfilesSage(
-        _evaluateJavascript,
+        _evaluatorForRun(runId),
       ).cambiar(profile).timeout(const Duration(seconds: 8));
     } on TimeoutException {
       if (!mounted || transitionId != _profileTransitionId) return;
@@ -3817,14 +4376,17 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   Future<OpcionAgenteSage?> _waitForAgentStudentRecordsOption() async {
+    final runId = _automaticRunId;
     final deadline = DateTime.now().add(const Duration(seconds: 12));
     while (mounted &&
+        runId == _automaticRunId &&
         !_isClosing &&
         DateTime.now().isBefore(deadline) &&
         _automaticFlowActive) {
       final menu = await ExtractorAgenteSage(
-        _evaluateJavascript,
+        _evaluatorForRun(runId),
       ).extraerLegajoUnicoAlumno();
+      if (!mounted || runId != _automaticRunId) return null;
       for (final option in menu.opciones) {
         if (option.claveCanonica == 'legajo_alumnos') return option;
       }
@@ -3841,6 +4403,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       return false;
     }
 
+    final runId = _automaticRunId;
     _automaticActionBusy = true;
     _setAutomaticState(
       EtapaSincronizacionSageAutomatica.abriendoLegajo,
@@ -3850,10 +4413,12 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     );
     try {
       final legajoAlumnos = await _waitForAgentStudentRecordsOption();
+      if (!mounted || runId != _automaticRunId) return true;
       if (legajoAlumnos == null) {
         _scheduleAutomaticStepRetry(
           step: PasoSincronizacionSageAutomatica.legajo,
-          message: 'SAGE no mostró la opción Legajo Alumnos para el perfil Docente.',
+          message:
+              'SAGE no mostró la opción Legajo Alumnos para el perfil Docente.',
           code: CodigoErrorSincronizacionSage.abrirLegajo,
           action: () async {
             await _openAutomaticAgentStudentRecords();
@@ -3877,9 +4442,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       }
 
       final result = await EjecutorShellAgenteSage(
-        _evaluateJavascript,
+        _evaluatorForRun(runId),
       ).abrirOpcionLegajoAlumno(legajoAlumnos);
-      if (!mounted) return true;
+      if (!mounted || runId != _automaticRunId) return true;
       if (!result.success) {
         setState(() {
           _navigationActionInFlight = null;
@@ -3907,6 +4472,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       unawaited(_installNavigationObservers());
       return true;
     } catch (_) {
+      if (!mounted || runId != _automaticRunId) return true;
       if (mounted) {
         setState(() {
           _navigationActionInFlight = null;
@@ -3923,7 +4489,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       );
       return true;
     } finally {
-      _automaticActionBusy = false;
+      if (runId == _automaticRunId) {
+        _automaticActionBusy = false;
+      }
     }
   }
 
@@ -3972,7 +4540,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo cambiar la página de legajos.')),
+        const SnackBar(
+          content: Text('No se pudo cambiar la página de legajos.'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _legajoPageBusy = false);
@@ -3981,6 +4551,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
 
   Future<void> _selectAutomaticStudentRecord(PerfilLegajoSage record) async {
     if (!_automaticMode || !mounted || _automaticActionBusy) return;
+    final runId = _automaticRunId;
     setState(() => _automaticStudentChoices = const []);
     _automaticWaitingForStudentChoice = false;
     _restartAutomaticWatchdog();
@@ -3996,7 +4567,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     try {
       await _activateLegajoProfile(record);
     } finally {
-      _automaticActionBusy = false;
+      if (runId == _automaticRunId) {
+        _automaticActionBusy = false;
+      }
     }
   }
 
@@ -4321,6 +4894,8 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   void _resetPrivateSageStateForLogin() {
     _cancelStudentAutomaticLanding();
     _cancelLoginTransitionWatchdog();
+    _automaticSessionConfirmed = false;
+    _lastAuthenticatedUri = null;
     _profileTransitionId++;
     _profileSwitchTarget = null;
     _privateSageShellActive = false;
@@ -4384,6 +4959,10 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     _historyAutoAttemptedCareerIds.clear();
     if (_automaticMode) {
       _automaticRunId++;
+      _navigationProbeRunning = false;
+      _historyProbeRunning = false;
+      _probeCycleRunning = false;
+      _automaticRecoveryCheckpoint = null;
       _automaticWatchdog?.cancel();
       _automaticRetryTimer?.cancel();
       _automaticFlowActive = false;
@@ -4729,12 +5308,12 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         'legajo',
         legajoSignature,
         '[SAGE legajo] stage=${extraction.etapa.name}; '
-        'state=${extraction.estado.name}; frame=${extraction.frameId}; '
-        'path=${extraction.pathname}; profiles=${extraction.perfiles.length}; '
-        'sections=${extraction.secciones.length}; '
-        'school_options=${extraction.opcionesEscolares.length}; '
-        'page=${extraction.paginaActual}; pages=${extraction.totalPaginas}; '
-        'records=${extraction.totalRegistros}',
+            'state=${extraction.estado.name}; frame=${extraction.frameId}; '
+            'path=${extraction.pathname}; profiles=${extraction.perfiles.length}; '
+            'sections=${extraction.secciones.length}; '
+            'school_options=${extraction.opcionesEscolares.length}; '
+            'page=${extraction.paginaActual}; pages=${extraction.totalPaginas}; '
+            'records=${extraction.totalRegistros}',
       );
       if (extraction.etapa == EtapaLegajoSage.escolares) {
         final schoolSignature = <Object?>[
@@ -4748,14 +5327,14 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           'escolares',
           schoolSignature,
           '[SAGE escolares detect] parent_found=${extraction.parentFrameFound}; '
-          'parent_path=${extraction.pathname}; '
-          'child_found=${extraction.childFrameFound}; '
-          'child_ready=${extraction.childReady}; '
-          'child_path=${extraction.childPathname}; '
-          'tabs_count=${extraction.opcionesEscolares.length}; '
-          'historial_alumnado_found=${extraction.opcionesEscolares.any((option) => normalizarLegajoSage(option.titulo) == 'historial del alumnado')}; '
-          'nivel_superior_historial_found=${extraction.opcionesEscolares.any((option) => normalizarLegajoSage(option.titulo) == 'nivel superior - historial')}; '
-          'state=escolaresDisponible',
+              'parent_path=${extraction.pathname}; '
+              'child_found=${extraction.childFrameFound}; '
+              'child_ready=${extraction.childReady}; '
+              'child_path=${extraction.childPathname}; '
+              'tabs_count=${extraction.opcionesEscolares.length}; '
+              'historial_alumnado_found=${extraction.opcionesEscolares.any((option) => normalizarLegajoSage(option.titulo) == 'historial del alumnado')}; '
+              'nivel_superior_historial_found=${extraction.opcionesEscolares.any((option) => normalizarLegajoSage(option.titulo) == 'nivel superior - historial')}; '
+              'state=escolaresDisponible',
         );
       }
       if (extraction.etapa == EtapaLegajoSage.secciones ||
@@ -4771,13 +5350,13 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           'secciones',
           sectionsSignature,
           '[SAGE secciones detect] tabs_found=true; '
-          'tabs_frame=${extraction.frameId}; tabs_path=${extraction.pathname}; '
-          'extracted_sections=${extraction.secciones.length}; '
-          'school_control_found=${extraction.historyControlFound}; '
-          'school_child_exists=${extraction.childFrameFound}; '
-          'user_requested_school=$_usuarioSolicitoEscolares; '
-          'native_sections_visible=$_nativeSeccionesLegajoVisible; '
-          'web_visible=${webViewSageVisible(historial: _nativeHistoryVisible, modulos: _nativeModulesVisible, submodulos: _nativeSubmodulesVisible, carga: _nativeLoadingVisible, legajo: _nativeLegajoVisible, secciones: _nativeSeccionesLegajoVisible, escolares: _nativeEscolaresVisible)}',
+              'tabs_frame=${extraction.frameId}; tabs_path=${extraction.pathname}; '
+              'extracted_sections=${extraction.secciones.length}; '
+              'school_control_found=${extraction.historyControlFound}; '
+              'school_child_exists=${extraction.childFrameFound}; '
+              'user_requested_school=$_usuarioSolicitoEscolares; '
+              'native_sections_visible=$_nativeSeccionesLegajoVisible; '
+              'web_visible=${webViewSageVisible(historial: _nativeHistoryVisible, modulos: _nativeModulesVisible, submodulos: _nativeSubmodulesVisible, carga: _nativeLoadingVisible, legajo: _nativeLegajoVisible, secciones: _nativeSeccionesLegajoVisible, escolares: _nativeEscolaresVisible)}',
         );
       }
     }
@@ -4823,13 +5402,20 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   Future<void> _probeHistoryAndApply() async {
-    if (_historyProbeRunning || _isClosing) return;
+    if (_historyProbeRunning || !_shouldProbeNow) return;
     _historyProbeRunning = true;
+    final runId = _automaticRunId;
+    final pageRevision = _pageRevision;
     try {
       final result = await _historialController.cargar(
         _evaluateJavascript,
         timeout: const Duration(seconds: 3),
       );
+      if (!_shouldProbeNow ||
+          runId != _automaticRunId ||
+          pageRevision != _pageRevision) {
+        return;
+      }
       final historyLogSignature = <Object?>[
         result.estado.name,
         result.pantallaDetectada,
@@ -4841,10 +5427,10 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         'historial',
         historyLogSignature,
         '[SAGE historial] extraction_state=${result.estado.name}; '
-        'frame_detected=${result.pantallaDetectada}; '
-        'master_loader_visible=${result.masterLoaderVisible}; '
-        'career_row_count=${result.careerRowCount}; '
-        'native_view_visible=${result.pantallaDetectada}',
+            'frame_detected=${result.pantallaDetectada}; '
+            'master_loader_visible=${result.masterLoaderVisible}; '
+            'career_row_count=${result.careerRowCount}; '
+            'native_view_visible=${result.pantallaDetectada}',
       );
       if (!mounted) return;
       if (_profileSwitchBusy ||
@@ -4915,11 +5501,14 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       if (kDebugMode) {
         debugPrint('[SAGE] historial probe: error de evaluación');
       }
-      if (mounted && !_nativeHistoryVisible) {
+      if (mounted &&
+          runId == _automaticRunId &&
+          pageRevision == _pageRevision &&
+          !_nativeHistoryVisible) {
         setState(() => _historyState = EstadoHistorialSage.error);
       }
     } finally {
-      _historyProbeRunning = false;
+      if (runId == _automaticRunId) _historyProbeRunning = false;
     }
   }
 
@@ -5039,9 +5628,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         'navegacion',
         navigationLogSignature,
         '[SAGE navegación] selected_path=${result.documentoActivo?.pathname ?? '/'}; '
-        'selected_frame=${result.documentoActivo?.frameId ?? 'root'}; '
-        'documents=${capture.documentos.length}; state=${result.estado.name}; '
-        'signature=${result.firma}',
+            'selected_frame=${result.documentoActivo?.frameId ?? 'root'}; '
+            'documents=${capture.documentos.length}; state=${result.estado.name}; '
+            'signature=${result.firma}',
       );
       return result;
     } catch (_) {
@@ -5060,6 +5649,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       return false;
     }
     if (_navigationActionInFlight != null) return false;
+    final runId = _automaticRunId;
     _manualNavigationActive = false;
     final activeDocument = _lastNavigationResult?.documentoActivo;
     _navigationOriginSignature = _lastNavigationResult?.firma;
@@ -5120,7 +5710,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       'depth': activeDocument?.profundidad ?? 0,
     });
     try {
-      final raw = await _evaluateJavascript('''(() => {
+      final raw = await _evaluatorForRun(runId)('''(() => {
         const expectedPath = $pathJson;
         const expectedDocument = $documentJson;
         const labels = $labelsJson.map(value => String(value).toLowerCase()
@@ -5261,7 +5851,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         found: found,
         activated: activated,
       );
-      if (!mounted) return activationSucceeded;
+      if (!mounted || runId != _automaticRunId) return false;
       if (kDebugMode && decoded is Map) {
         debugPrint(
           '[SAGE acción] option=${option.titulo}; '
@@ -5283,7 +5873,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       unawaited(_installNavigationObservers());
       return true;
     } catch (_) {
-      if (mounted) {
+      if (mounted && runId == _automaticRunId) {
         setState(() {
           _navigationActionInFlight = null;
           _nativeLoadingVisible = false;
@@ -5401,14 +5991,15 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   Future<void> _activateLegajoProfile(PerfilLegajoSage profile) async {
     if (_legajoActionInFlight != null) return;
     _beginPendingStudentRecord(profile);
+    final runId = _automaticRunId;
     _manualNavigationActive = false;
     _usuarioSolicitoEscolares = false;
     _beginLegajoAction('Abriendo tu legajo…', TipoAccionLegajoSage.abrirPerfil);
     final result = await EjecutorLegajoSage(
-      _evaluateJavascript,
+      _evaluatorForRun(runId),
     ).abrirPerfil(profile);
     _logLegajoAction(result);
-    if (!mounted) return;
+    if (!mounted || runId != _automaticRunId) return;
     if (!result.success) {
       _usuarioSolicitoEscolares = false;
       _clearPendingStudentRecord();
@@ -5433,6 +6024,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       return;
     }
     if (_legajoActionInFlight != null) return;
+    final runId = _automaticRunId;
     _manualNavigationActive = false;
     _usuarioSolicitoEscolares = true;
     _beginLegajoAction(
@@ -5441,12 +6033,12 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           ? TipoAccionLegajoSage.abrirEscolares
           : TipoAccionLegajoSage.abrirSeccion,
     );
-    final executor = EjecutorLegajoSage(_evaluateJavascript);
+    final executor = EjecutorLegajoSage(_evaluatorForRun(runId));
     final result = await (isSchool
         ? executor.activarPestanaEscolares()
         : executor.activarSeccion(section));
     _logLegajoAction(result);
-    if (!mounted) return;
+    if (!mounted || runId != _automaticRunId) return;
     if (!result.success) {
       if (isSchool) _usuarioSolicitoEscolares = false;
       _endLegajoAction();
@@ -5477,6 +6069,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       return;
     }
     if (_legajoActionInFlight != null) return;
+    final runId = _automaticRunId;
     _manualNavigationActive = false;
     _beginLegajoAction(
       isHistory ? 'Cargando tu historial académico…' : 'Abriendo opción…',
@@ -5484,12 +6077,12 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           ? TipoAccionLegajoSage.abrirHistorial
           : TipoAccionLegajoSage.abrirSeccion,
     );
-    final executor = EjecutorLegajoSage(_evaluateJavascript);
+    final executor = EjecutorLegajoSage(_evaluatorForRun(runId));
     final result = await (isHistory
         ? executor.activarNivelSuperiorHistorial()
         : executor.activarEscolares(option));
     _logLegajoAction(result);
-    if (!mounted) return;
+    if (!mounted || runId != _automaticRunId) return;
     if (!result.success) {
       if (isHistory) _usuarioSolicitoEscolares = false;
       _endLegajoAction();
@@ -5628,12 +6221,11 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   }
 
   Future<void> _autoLoadAllCareers(List<CarreraHistorialSage> careers) async {
-    if (!mounted ||
-        _historyAutoLoadRunning ||
-        !_hasConfirmedStudentContext) {
+    if (!mounted || _historyAutoLoadRunning || !_hasConfirmedStudentContext) {
       return;
     }
     _historyAutoLoadRunning = true;
+    final runId = _automaticRunId;
     try {
       for (var index = 0; index < careers.length; index++) {
         final original = careers[index];
@@ -5674,7 +6266,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           ),
         );
         final result = await _expandHistoryCareer(current);
-        if (!mounted) return;
+        if (!mounted || runId != _automaticRunId) return;
         if (result.estado != EstadoCargaMateriasSage.disponible &&
             result.estado != EstadoCargaMateriasSage.vacio) {
           _reportPreparation(
@@ -5689,7 +6281,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       }
       _emitTrajectoryIfReady();
     } finally {
-      _historyAutoLoadRunning = false;
+      if (runId == _automaticRunId) _historyAutoLoadRunning = false;
     }
   }
 
@@ -5714,8 +6306,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     HistorialNivelSuperiorSage history,
   ) async {
     final documents = <DocumentoAcademicoSage>[];
+    final runId = _automaticRunId;
     for (var index = 0; index < history.carreras.length; index++) {
-      if (!mounted || _isClosing) break;
+      if (!mounted || _isClosing || runId != _automaticRunId) break;
       final career = history.carreras[index];
       _setAutomaticState(
         EtapaSincronizacionSageAutomatica.preparandoDocumentos,
@@ -5727,13 +6320,14 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       );
       try {
         final prepared = await _historialController.asegurarSubgrillaLista(
-          _evaluateJavascript,
+          _evaluatorForRun(runId),
           career,
           reportTitle:
               TipoDocumentoAcademicoSage.situacionAcademica.tituloReporte,
           restoreOriginal: false,
           timeout: const Duration(seconds: 8),
         );
+        if (!mounted || runId != _automaticRunId) break;
         if (prepared.estado != EstadoSubgrillaSage.expandedReady) continue;
         void add(TipoDocumentoAcademicoSage type, bool available) {
           if (!available) return;
@@ -5769,6 +6363,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   ) async {
     if (_automaticDocumentsPreparing || _automaticCompleting) return;
     _automaticDocumentsPreparing = true;
+    final runId = _automaticRunId;
     try {
       final sourceProfile = _automaticSourceProfile ?? _effectiveProfile;
       if (sourceProfile == PerfilSage.agente) {
@@ -5776,14 +6371,11 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           _disabledAcademicDocuments(trajectory),
         );
         if (kDebugMode) {
-          debugPrint(
-            '[SAGE documentos] source_profile=agente; enabled=false',
-          );
+          debugPrint('[SAGE documentos] source_profile=agente; enabled=false');
         }
         await _completeAutomaticSync(
           enriched,
-          detalleCompletado:
-              '${enriched.totalMaterias} materias actualizadas.',
+          detalleCompletado: '${enriched.totalMaterias} materias actualizadas.',
         );
         return;
       }
@@ -5792,6 +6384,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       final documents = history == null
           ? const <DocumentoAcademicoSage>[]
           : await _detectAcademicDocuments(history);
+      if (!mounted || runId != _automaticRunId) return;
       var enriched = trajectory.conDocumentos(documents);
       var updatedSubjects = 0;
       var failedBooklets = 0;
@@ -5801,6 +6394,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           trajectory: enriched,
           history: history,
         );
+        if (!mounted || runId != _automaticRunId) return;
         enriched = result.trayectoria;
         updatedSubjects = result.materiasActualizadas;
         failedBooklets = result.libretasFallidas;
@@ -5817,7 +6411,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           : '${enriched.totalMaterias} materias actualizadas.';
       await _completeAutomaticSync(enriched, detalleCompletado: detail);
     } finally {
-      _automaticDocumentsPreparing = false;
+      if (runId == _automaticRunId) _automaticDocumentsPreparing = false;
     }
   }
 
@@ -5826,6 +6420,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     required HistorialNivelSuperiorSage history,
   }) async {
     var current = trajectory;
+    final runId = _automaticRunId;
     var updatedSubjects = 0;
     var failedBooklets = 0;
     final extractor = const ExtractorLibretaCalificacionesPdf();
@@ -5842,7 +6437,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     }
 
     for (var index = 0; index < history.carreras.length; index++) {
-      if (!mounted || _isClosing) break;
+      if (!mounted || _isClosing || runId != _automaticRunId) break;
       final career = history.carreras[index];
 
       File? file;
@@ -5865,10 +6460,12 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
             directorioDestino: tempDirectory,
             timeoutEnlace: const Duration(seconds: 20),
           );
+          if (!mounted || runId != _automaticRunId) break;
           if (file == null && attempt == 0) {
             await Future<void>.delayed(const Duration(milliseconds: 650));
           }
         }
+        if (!mounted || runId != _automaticRunId) break;
         if (file == null) {
           failedBooklets++;
           continue;
@@ -5881,7 +6478,29 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           progreso: 0.972 + ((index + 0.45) / history.carreras.length) * 0.02,
           paso: PasoSincronizacionSageAutomatica.documentos,
         );
-        final extraction = extractor.extraer(await file.readAsBytes());
+        try {
+          final documento = DocumentoAcademicoSage(
+            tipo: TipoDocumentoAcademicoSage.libreta,
+            gridRowId: career.gridRowId,
+            careerKey: career.careerKey,
+            carrera: career.nombre,
+            institucion: career.institucion,
+          );
+          final clave = ClaveDocumentoAcademicoSage.de(
+            trajectory.perfil,
+            documento,
+          );
+          await const RepositorioDocumentosAcademicosSage().guardar(
+            clave,
+            archivo: file,
+          );
+        } catch (_) {
+          // La extracción de notas puede continuar aunque falle el guardado.
+        }
+        final bytes = await file.readAsBytes();
+        if (!mounted || runId != _automaticRunId) break;
+        final extraction = await compute(extractor.extraer, bytes);
+        if (!mounted || runId != _automaticRunId) break;
 
         _setAutomaticState(
           EtapaSincronizacionSageAutomatica.relacionandoCalificaciones,
@@ -5920,7 +6539,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       }
     }
 
-    if (updatedSubjects > 0) {
+    if (updatedSubjects > 0 && mounted && runId == _automaticRunId) {
       _setAutomaticState(
         EtapaSincronizacionSageAutomatica.actualizandoCalendario,
         'Actualizando calendario',
@@ -5942,6 +6561,11 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     if (request == null || history == null) return null;
     final requestedKey = request.careerKey.trim().toLowerCase();
     for (final career in history.carreras) {
+      if (request.institucion.trim().isNotEmpty &&
+          career.institucion.trim().toLowerCase() !=
+              request.institucion.trim().toLowerCase()) {
+        continue;
+      }
       if (requestedKey.isNotEmpty &&
           career.careerKey.trim().isNotEmpty &&
           career.careerKey.trim().toLowerCase() == requestedKey) {
@@ -5990,6 +6614,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     }
 
     _automaticDocumentRequestRunning = true;
+    final runId = _automaticRunId;
     _automaticWatchdog?.cancel();
     _automaticRetryTimer?.cancel();
     _setAutomaticState(
@@ -6006,7 +6631,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         career,
         request.tipo.tituloReporte,
         silent: true,
+        abrirAlCompletar: widget.mostrarDocumentoAlDescargar,
       );
+      if (!mounted || runId != _automaticRunId) return;
       if (file == null) {
         throw const ErrorSincronizacionSageAutomatica(
           'SAGE no pudo generar el documento solicitado.',
@@ -6025,6 +6652,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       await Future<void>.delayed(const Duration(milliseconds: 450));
       if (mounted && widget.cerrarAlCompletar) _exitSageToAppHome();
     } catch (error) {
+      if (!mounted || runId != _automaticRunId) return;
       _scheduleAutomaticStepRetry(
         step: PasoSincronizacionSageAutomatica.documentos,
         message: error is ErrorSincronizacionSageAutomatica
@@ -6039,7 +6667,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         },
       );
     } finally {
-      _automaticDocumentRequestRunning = false;
+      if (runId == _automaticRunId) _automaticDocumentRequestRunning = false;
     }
   }
 
@@ -6155,12 +6783,14 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         gridRowId: career.gridRowId,
       );
     }
+    final runId = _automaticRunId;
     setState(() => _historyState = EstadoHistorialSage.cargandoMaterias);
     try {
       final result = await _historialController.expandirYCargarMaterias(
-        _evaluateJavascript,
+        _evaluatorForRun(runId),
         career,
       );
+      if (!mounted || runId != _automaticRunId) return result;
       if (kDebugMode) {
         debugPrint(
           '[SAGE sync] restoring_history_frame=true; '
@@ -6209,7 +6839,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       }
       return result;
     } catch (_) {
-      if (mounted) {
+      if (mounted && runId == _automaticRunId) {
         setState(() {
           _historyState = _history == null
               ? EstadoHistorialSage.error
@@ -6233,6 +6863,65 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     Duration timeoutEnlace = const Duration(seconds: 8),
   }) async {
     if (_reportInFlight) return null;
+    final tipo = TipoDocumentoAcademicoSage.values
+        .where((tipo) => tipo.tituloReporte == title)
+        .firstOrNull;
+    final historial = _history;
+    final perfil =
+        widget.perfilEsperado ??
+        (historial == null
+            ? null
+            : ConstructorTrayectoriaSageLaboratorio.construir(
+                historial: historial,
+                perfil: _selectedStudentRecord,
+              ).perfil);
+    if (abrirAlCompletar && tipo != null && perfil != null) {
+      final documento = DocumentoAcademicoSage(
+        tipo: tipo,
+        gridRowId: career.gridRowId,
+        careerKey: career.careerKey,
+        carrera: career.nombre,
+        institucion: career.institucion,
+      );
+      ClaveDocumentoAcademicoSage? clave;
+      try {
+        clave = ClaveDocumentoAcademicoSage.de(perfil, documento);
+      } on FormatException {
+        /* El reporte aún puede consultarse sin índice. */
+      }
+      if (clave != null) {
+        const repositorio = RepositorioDocumentosAcademicosSage();
+        Future<File?> obtenerRemoto() => _openHistoryReport(
+          career,
+          title,
+          silent: silent,
+          abrirAlCompletar: false,
+          directorioDestino: directorioDestino,
+          timeoutEnlace: timeoutEnlace,
+        );
+        final copia = await repositorio.obtener(
+          clave,
+          obtenerRemoto: obtenerRemoto,
+        );
+        if (copia == null || !mounted) return null;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => PantallaVisorPdfSage(
+              rutaArchivo: copia.archivo?.path,
+              nombreArchivo: '${tipo.clave}.pdf',
+              copiaLocal: copia,
+              onActualizar: () => repositorio.obtener(
+                clave!,
+                obtenerRemoto: obtenerRemoto,
+                actualizar: true,
+              ),
+            ),
+          ),
+        );
+        return copia.archivo;
+      }
+    }
+    final runId = _automaticRunId;
     if (_historyState == EstadoHistorialSage.cargandoCarreras) {
       if (mounted && !silent) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -6245,6 +6934,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     }
     setState(() => _reportInFlight = true);
     final pending = Completer<Uri>();
+    pending.future.ignore();
     _pendingReportUrl = pending;
     if (!silent) {
       ScaffoldMessenger.of(
@@ -6255,7 +6945,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       await _installReportBridge();
       await _installReportDiagnostics();
       final report = await _historialController.pulsarReporte(
-        _evaluateJavascript,
+        _evaluatorForRun(runId),
         career,
         title,
       );
@@ -6269,9 +6959,11 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
           'state=${report.estado.name}',
         );
       }
+      if (!mounted || runId != _automaticRunId) return null;
       if (report.estado == EstadoReporteSage.iniciado) {
         try {
           final uri = await pending.future.timeout(timeoutEnlace);
+          if (!mounted || runId != _automaticRunId) return null;
           final file = await _procesarDescargaWeb(
             uri: uri,
             abrirAlCompletar: abrirAlCompletar,
@@ -6302,7 +6994,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       return null;
     } finally {
       if (identical(_pendingReportUrl, pending)) _pendingReportUrl = null;
-      if (mounted) setState(() => _reportInFlight = false);
+      if (mounted && runId == _automaticRunId) {
+        setState(() => _reportInFlight = false);
+      }
     }
   }
 
@@ -6380,6 +7074,11 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
   FutureOr<NavigationDecision> _handleNavigationRequest(
     NavigationRequest request,
   ) {
+    if (!mounted || _isClosing) {
+      return request.url == 'about:blank'
+          ? NavigationDecision.navigate
+          : NavigationDecision.prevent;
+    }
     final uri = Uri.tryParse(request.url);
     if (uri == null) return NavigationDecision.prevent;
 
@@ -6949,6 +7648,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     bool notificarError = true,
   }) async {
     if (!_canStayInWebView(uri) || !_isPdfDownloadUri(uri)) return null;
+    final runId = _automaticRunId;
     final now = DateTime.now();
     if (_activeDownloadUri == uri &&
         _activeDownloadStartedAt != null &&
@@ -6973,8 +7673,10 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         notificarError: notificarError,
       );
     } finally {
-      _activeDownloadUri = null;
-      _activeDownloadStartedAt = null;
+      if (runId == _automaticRunId) {
+        _activeDownloadUri = null;
+        _activeDownloadStartedAt = null;
+      }
     }
   }
 
@@ -6988,12 +7690,18 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
     Directory? directorioDestino,
     bool notificarError = true,
   }) async {
+    final runId = _automaticRunId;
+    final client = _httpClient;
+    File? temporaryFile;
+    bool vigente() => mounted && !_isClosing && runId == _automaticRunId;
     _downloadState.value = const _DownloadState.downloading();
     try {
       final response = await _sendPdfRequest(
         initialUri,
         userAgentHint: userAgentHint,
+        client: client,
       );
+      if (!vigente()) return null;
       final contentType = (mimeTypeHint ?? response.headers['content-type'])
           ?.split(';')
           .first
@@ -7024,7 +7732,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
             _filenameFromUri(initialUri),
       );
       final file = await _nextAvailableFile(directory, fileName);
-      final temporaryFile = File('${file.path}.part');
+      temporaryFile = File('${file.path}.part');
       if (await temporaryFile.exists()) {
         await temporaryFile.delete();
       }
@@ -7034,8 +7742,16 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
       final sink = temporaryFile.openWrite();
       try {
         await for (final chunk in response.stream) {
+          if (!vigente()) throw StateError('Descarga reemplazada.');
           sink.add(chunk);
           receivedBytes += chunk.length;
+          if (_automaticMode && _automaticFlowActive && !_automaticCompleting) {
+            _automaticWatchdog?.observar(
+              paso: PasoSincronizacionSageAutomatica.documentos.index,
+              progreso: _automaticState.progreso,
+              unidades: receivedBytes,
+            );
+          }
           _downloadState.value = _DownloadState.downloading(
             progress: totalBytes == null || totalBytes <= 0
                 ? null
@@ -7049,24 +7765,34 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         rethrow;
       }
 
+      if (!vigente()) return null;
       final savedFile = await temporaryFile.rename(file.path);
+      temporaryFile = null;
+      if (!vigente()) return savedFile;
       _downloadState.value = _DownloadState.completed(savedFile);
       if (mounted && abrirAlCompletar) {
         await _openPdfViewer(savedFile);
       }
       return savedFile;
     } catch (_) {
-      if (notificarError) {
+      if (notificarError && vigente()) {
         _showDownloadFailure(
           'No se pudo descargar el documento. Verificá la sesión de SAGE e intentá nuevamente.',
         );
       }
       return null;
+    } finally {
+      if (temporaryFile != null) {
+        try {
+          if (await temporaryFile.exists()) await temporaryFile.delete();
+        } catch (_) {}
+      }
     }
   }
 
   Future<http.StreamedResponse> _sendPdfRequest(
     Uri initialUri, {
+    required http.Client client,
     String? userAgentHint,
   }) async {
     var currentUri = initialUri;
@@ -7092,7 +7818,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
         request.headers['Cookie'] = cookieHeader;
       }
 
-      final response = await _httpClient.send(request);
+      final response = await client
+          .send(request)
+          .timeout(const Duration(seconds: 20));
       if (!response.isRedirect) return response;
 
       final location = response.headers['location'];
@@ -7263,6 +7991,9 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
 
   @override
   void dispose() {
+    _isClosing = true;
+    unawaited(_webViewActivity?.liberar());
+    _cancelAutomaticLoginCheck();
     WidgetsBinding.instance.removeObserver(this);
     _historyPollTimer?.cancel();
     _navigationDebounceTimer?.cancel();
@@ -7280,6 +8011,7 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
 
   @override
   Widget build(BuildContext context) {
+    _scheduleActivityUpdate();
     final parentTheme = Theme.of(context);
     final theme = widget.themeOverride ?? parentTheme;
     final scheme = theme.colorScheme;
@@ -7374,8 +8106,14 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
                     child: ColoredBox(
                       color: theme.scaffoldBackgroundColor,
                       child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 260),
-                        reverseDuration: const Duration(milliseconds: 180),
+                        duration: MovimientoApp.duracion(
+                          context,
+                          MovimientoApp.entrada,
+                        ),
+                        reverseDuration: MovimientoApp.duracion(
+                          context,
+                          MovimientoApp.salida,
+                        ),
                         switchInCurve: Curves.easeOutCubic,
                         switchOutCurve: Curves.easeInCubic,
                         layoutBuilder: (currentChild, previousChildren) {
@@ -7389,9 +8127,23 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
                           );
                         },
                         transitionBuilder: (child, animation) {
-                          return FadeTransition(
-                            opacity: animation,
+                          return AnimatedBuilder(
+                            animation: animation,
                             child: child,
+                            builder: (context, child) => ExcludeFocus(
+                              excluding:
+                                  animation.status == AnimationStatus.reverse,
+                              child: IgnorePointer(
+                                ignoring:
+                                    animation.status == AnimationStatus.reverse,
+                                child: transicionPaginaApp(
+                                  context,
+                                  animation,
+                                  kAlwaysDismissedAnimation,
+                                  child!,
+                                ),
+                              ),
+                            ),
                           );
                         },
                         child: _buildCurrentNativeSageScreen(),
@@ -7510,17 +8262,16 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
                                 : _automaticActionBusy
                                 ? 'Abriendo tu legajo…'
                                 : null,
-                            paginaActual:
-                                _legajoExtraction?.paginaActual ?? 1,
-                            totalPaginas:
-                                _legajoExtraction?.totalPaginas ?? 1,
+                            paginaActual: _legajoExtraction?.paginaActual ?? 1,
+                            totalPaginas: _legajoExtraction?.totalPaginas ?? 1,
                             totalRegistros:
                                 _legajoExtraction?.totalRegistros ?? 0,
                             onPaginaAnterior:
                                 _legajoExtraction?.tienePaginaAnterior == true
                                 ? () => unawaited(
                                     _changeLegajoPage(
-                                      (_legajoExtraction?.paginaActual ?? 1) - 1,
+                                      (_legajoExtraction?.paginaActual ?? 1) -
+                                          1,
                                       automatic: true,
                                     ),
                                   )
@@ -7529,14 +8280,15 @@ class _PantallaSageLaboratorioState extends State<PantallaSageLaboratorio>
                                 _legajoExtraction?.tienePaginaSiguiente == true
                                 ? () => unawaited(
                                     _changeLegajoPage(
-                                      (_legajoExtraction?.paginaActual ?? 1) + 1,
+                                      (_legajoExtraction?.paginaActual ?? 1) +
+                                          1,
                                       automatic: true,
                                     ),
                                   )
                                 : null,
                           )
                         : PantallaSincronizacionSageAutomatica(
-                            estado: _automaticState,
+                            estado: _visibleAutomaticState,
                             loginDisponible: _loginDocumentReady,
                             procesandoCredenciales: _automaticCredentialsBusy,
                             onIngresar: _submitAutomaticCredentials,

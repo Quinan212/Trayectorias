@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../compartido/movimiento/movimiento_app.dart';
 import '../../../compartido/proveedores/datos_catalogo.dart';
 import '../../../datos/cargador_fuente_html.dart';
 import '../../../modelos/contenido_curricular.dart';
@@ -209,7 +210,7 @@ class _PantallaDisenosAtlassianState
             leading: BotonIconoAtlassian(
               icon: Icons.arrow_back_rounded,
               tooltip: 'Volver',
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => volverPantallaAtlassian(context),
             ),
           ),
           Expanded(
@@ -372,51 +373,53 @@ class _DesignSubjectRowAtlassian extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(RadioAtlassian.medium),
+    return ToqueMovimientoApp(
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(RadioAtlassian.medium),
+                ),
+                child: Text(
+                  '${subject.anio}°',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
               ),
-              child: Text(
-                '${subject.anio}°',
-                style: Theme.of(context).textTheme.labelMedium,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      subject.displayNombre,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subject.formato.isEmpty ? subject.tipo : subject.formato,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    subject.displayNombre,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subject.formato.isEmpty ? subject.tipo : subject.formato,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+              const SizedBox(width: 8),
+              LozengeAtlassian(
+                label: available ? 'Disponible' : 'Pendiente',
+                appearance: available
+                    ? AparienciaLozengeAtlassian.success
+                    : AparienciaLozengeAtlassian.neutral,
               ),
-            ),
-            const SizedBox(width: 8),
-            LozengeAtlassian(
-              label: available ? 'Disponible' : 'Pendiente',
-              appearance: available
-                  ? AparienciaLozengeAtlassian.success
-                  : AparienciaLozengeAtlassian.neutral,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -449,7 +452,7 @@ class PantallaDetalleDisenoAtlassian extends StatelessWidget {
             leading: BotonIconoAtlassian(
               icon: Icons.arrow_back_rounded,
               tooltip: 'Volver',
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => volverPantallaAtlassian(context),
             ),
           ),
           Expanded(

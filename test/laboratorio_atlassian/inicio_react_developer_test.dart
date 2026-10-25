@@ -211,39 +211,36 @@ void main() {
     },
   );
 
-  test(
-    '05 mueve la búsqueda al Liquid Glass inferior sin cambiar su callback',
-    () {
-      final source = File(
-        'lib/funcionalidades/laboratorio_atlassian/pantallas/'
-        'pantalla_inicio_react_developer.dart',
-      ).readAsStringSync(encoding: utf8);
+  test('05 usa la barra compartida inferior y conserva su callback', () {
+    final source = File(
+      'lib/funcionalidades/laboratorio_atlassian/pantallas/'
+      'pantalla_inicio_react_developer.dart',
+    ).readAsStringSync(encoding: utf8);
 
-      expect(source, contains("inicio-react-liquid-search"));
-      expect(source, contains("Buscar en Trayectorias…"));
-      expect(source, contains("BackdropFilter("));
-      expect(source, contains("ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18)"));
-      expect(source, contains("onTap: widget.onSearch"));
-      expect(source, isNot(contains("inicio-react-search'")));
-      expect(source, contains("inicio-react-layout"));
-      expect(source, contains("Expanded("));
-      expect(source, isNot(contains("SliverFillRemaining(")));
-      expect(source, isNot(contains("fillOverscroll: true")));
-      expect(source, contains("inicio-react-search-home-empty"));
-      expect(source, contains("empezá buscando lo que quieras"));
-      expect(source, contains("todo lo que necesitás está acá"));
-      expect(source, contains("inicio-react-sync-button"));
-      expect(source, contains('width: busy ? 176 : 128'));
-      expect(source, contains("busy ? 'sincronizando…' : 'sincronizar'"));
-      expect(source, contains('softWrap: false'));
-      expect(source, contains("inicio-react-document-shortcuts"));
-      expect(source, contains('inicio-react-document-\${document.tipo.clave}'));
-      expect(source, contains('TipoDocumentoAcademicoSage.situacionAcademica'));
-      expect(source, contains('TipoDocumentoAcademicoSage.analitico'));
-      expect(source, contains('TipoDocumentoAcademicoSage.libreta'));
-      expect(source, isNot(contains("primary: 'explorá', accent: 'la app'")));
-    },
-  );
+    expect(source, contains("inicio-react-liquid-search"));
+    expect(source, contains('BarraBusquedaApp('));
+    expect(source, contains('onTap: onTap'));
+    expect(source, isNot(contains('BackdropFilter(')));
+    expect(source, contains('onTap: widget.onSearch'));
+    expect(source, isNot(contains("inicio-react-search'")));
+    expect(source, contains("inicio-react-layout"));
+    expect(source, contains("Expanded("));
+    expect(source, isNot(contains("SliverFillRemaining(")));
+    expect(source, isNot(contains("fillOverscroll: true")));
+    expect(source, contains("inicio-react-search-home-empty"));
+    expect(source, contains("empezá buscando lo que quieras"));
+    expect(source, contains("todo lo que necesitás está acá"));
+    expect(source, contains("inicio-react-sync-button"));
+    expect(source, contains('width: busy ? 176 : 128'));
+    expect(source, contains("busy ? 'sincronizando…' : 'sincronizar'"));
+    expect(source, contains('softWrap: false'));
+    expect(source, contains("inicio-react-document-shortcuts"));
+    expect(source, contains('inicio-react-document-\${document.tipo.clave}'));
+    expect(source, contains('TipoDocumentoAcademicoSage.situacionAcademica'));
+    expect(source, contains('TipoDocumentoAcademicoSage.analitico'));
+    expect(source, contains('TipoDocumentoAcademicoSage.libreta'));
+    expect(source, isNot(contains("primary: 'explorá', accent: 'la app'")));
+  });
 
   test('04B compacta Bento y Chroma y elimina iconos gigantes de fondo', () {
     final source = File(

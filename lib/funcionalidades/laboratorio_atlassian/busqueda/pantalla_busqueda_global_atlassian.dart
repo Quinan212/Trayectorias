@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../compartido/navegacion/barra_busqueda_app.dart';
 import 'modelos_busqueda_atlassian.dart';
 
 class PantallaBusquedaGlobalAtlassian extends ConsumerStatefulWidget {
@@ -49,8 +50,13 @@ class _PantallaBusquedaGlobalAtlassianState
   bool _loadingPlans = true;
   String _query = '';
   Timer? _debounce;
+  Animation<double>? _entradaRuta;
+  bool _focoInicialSolicitado = false;
 
   _SearchModel? _cachedModel;
+  List<EventoExamen>? _cachedExams;
+  TrayectoriaSageLaboratorio? _cachedTrajectory;
+  List<ContenidoCurricular>? _cachedCurricular;
   String? _lastQueryKey;
 
   List<CareerInfo> get _visibleCareers =>
@@ -60,8 +66,37 @@ class _PantallaBusquedaGlobalAtlassianState
   void initState() {
     super.initState();
     unawaited(_loadPlans());
-    Future.delayed(const Duration(milliseconds: 220), () {
-      if (mounted) _focusNode.requestFocus();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_focoInicialSolicitado) return;
+    final entrada = ModalRoute.of(context)?.animation;
+    if (!identical(_entradaRuta, entrada)) {
+      _entradaRuta?.removeStatusListener(_estadoEntradaRuta);
+      _entradaRuta = entrada;
+    }
+    if (entrada == null || entrada.status == AnimationStatus.completed) {
+      _solicitarFocoInicial();
+    } else {
+      entrada.removeStatusListener(_estadoEntradaRuta);
+      entrada.addStatusListener(_estadoEntradaRuta);
+    }
+  }
+
+  void _estadoEntradaRuta(AnimationStatus estado) {
+    if (estado == AnimationStatus.completed) _solicitarFocoInicial();
+  }
+
+  void _solicitarFocoInicial() {
+    if (_focoInicialSolicitado) return;
+    _focoInicialSolicitado = true;
+    _entradaRuta?.removeStatusListener(_estadoEntradaRuta);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
+        _focusNode.requestFocus();
+      }
     });
   }
 
@@ -90,6 +125,7 @@ class _PantallaBusquedaGlobalAtlassianState
 
   @override
   void dispose() {
+    _entradaRuta?.removeStatusListener(_estadoEntradaRuta);
     _debounce?.cancel();
     _controller.dispose();
     _focusNode.dispose();
@@ -158,7 +194,14 @@ class _PantallaBusquedaGlobalAtlassianState
         final query = normalizarBusquedaAtlassian(_query);
         final queryKey =
             '$query|${trajectory?.carreras.length}|${exams.length}|${curricular.length}|${_planes.length}';
-        if (_cachedModel == null || _lastQueryKey != queryKey) {
+        if (_cachedModel == null ||
+            _lastQueryKey != queryKey ||
+            !identical(_cachedExams, exams) ||
+            !identical(_cachedTrajectory, trajectory) ||
+            !identical(_cachedCurricular, curricular)) {
+          _cachedExams = exams;
+          _cachedTrajectory = trajectory;
+          _cachedCurricular = curricular;
           _lastQueryKey = queryKey;
           _cachedModel = _buildSearchModel(
             query: query,
@@ -174,7 +217,7 @@ class _PantallaBusquedaGlobalAtlassianState
           data: atlassianTheme,
           child: Scaffold(
             backgroundColor: atlassianTheme.scaffoldBackgroundColor,
-            resizeToAvoidBottomInset: false,
+            resizeToAvoidBottomInset: true,
             body: Stack(
               children: [
                 Positioned.fill(
@@ -184,24 +227,19 @@ class _PantallaBusquedaGlobalAtlassianState
                         loading: loading,
                         onBack: () => Navigator.of(context).maybePop(),
                       ),
+                      _FloatingSearchBarAtlassian(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        onChanged: _onChanged,
+                        onSubmitted: (_) => _rememberQuery(),
+                        onClear: _clearQuery,
+                      ),
                       Expanded(
                         child: query.isEmpty
                             ? _buildLanding(context, trajectory)
                             : _buildResults(context, model, trajectory),
                       ),
                     ],
-                  ),
-                ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: MediaQuery.of(context).viewInsets.bottom,
-                  child: _FloatingSearchBarAtlassian(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    onChanged: _onChanged,
-                    onSubmitted: (_) => _rememberQuery(),
-                    onClear: _clearQuery,
                   ),
                 ),
               ],
@@ -901,7 +939,7 @@ class _PantallaBusquedaGlobalAtlassianState
       final examMetadata = builder.events
           .map(
             (event) =>
-                '${event.careerId} ${event.instancia} ${event.docentes.join(' ')} ${event.division ?? ''} ${searchableDateAtlassian(event.fecha, event.hora)}',
+                '${event.careerId} ${event.instancia} ${event.docentes.join(' ')} ${event.division ?? ''} ${searchableDateAtlassian(event.fechaVigente, event.horaVigente)}',
           )
           .join(' ');
       final designMetadata = builder.designs
@@ -949,7 +987,7 @@ class _PantallaBusquedaGlobalAtlassianState
         event.docentes.join(' '),
         event.division ?? '',
         event.anio?.toString() ?? '',
-        searchableDateAtlassian(event.fecha, event.hora),
+        searchableDateAtlassian(event.fechaVigente, event.horaVigente),
         'mesa examen final coloquio calendario fecha',
       ].join(' ');
       final score = math.max(
@@ -1087,10 +1125,7 @@ class _PantallaBusquedaGlobalAtlassianState
 }
 
 class _TopBarAtlassian extends StatelessWidget {
-  const _TopBarAtlassian({
-    required this.loading,
-    required this.onBack,
-  });
+  const _TopBarAtlassian({required this.loading, required this.onBack});
 
   final bool loading;
   final VoidCallback onBack;
@@ -1150,36 +1185,16 @@ class _FloatingSearchBarAtlassian extends StatelessWidget {
   final VoidCallback onClear;
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(RadioAtlassian.pill),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.16),
-                blurRadius: 16,
-                spreadRadius: 2,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: CampoBusquedaAtlassian(
-            controller: controller,
-            focusNode: focusNode,
-            hintText: 'Buscar en toda la aplicación…',
-            pill: true,
-            onChanged: onChanged,
-            onSubmitted: onSubmitted,
-            onClear: onClear,
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+    child: BarraBusquedaApp(
+      controller: controller,
+      focusNode: focusNode,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      onClear: onClear,
+    ),
+  );
 }
 
 class _QuickActionsGrid extends StatelessWidget {
@@ -1232,15 +1247,21 @@ class _QuickActionCard extends StatelessWidget {
     Color iconColor;
     switch (action.group) {
       case _ActionGroup.navigation:
-        containerColor = const Color(0xFF0C66E4).withOpacity(isDark ? 0.25 : 0.08);
+        containerColor = const Color(
+          0xFF0C66E4,
+        ).withOpacity(isDark ? 0.25 : 0.08);
         iconColor = isDark ? const Color(0xFF579DFF) : const Color(0xFF0C66E4);
         break;
       case _ActionGroup.tools:
-        containerColor = const Color(0xFF22C55E).withOpacity(isDark ? 0.25 : 0.08);
+        containerColor = const Color(
+          0xFF22C55E,
+        ).withOpacity(isDark ? 0.25 : 0.08);
         iconColor = isDark ? const Color(0xFF4ADE80) : const Color(0xFF16A34A);
         break;
       case _ActionGroup.sage:
-        containerColor = const Color(0xFF8B5CF6).withOpacity(isDark ? 0.25 : 0.08);
+        containerColor = const Color(
+          0xFF8B5CF6,
+        ).withOpacity(isDark ? 0.25 : 0.08);
         iconColor = isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED);
         break;
       case _ActionGroup.dynamic:
@@ -1265,7 +1286,9 @@ class _QuickActionCard extends StatelessWidget {
             ),
             child: Icon(
               action.icon,
-              color: action.enabled ? iconColor : scheme.onSurfaceVariant.withOpacity(0.5),
+              color: action.enabled
+                  ? iconColor
+                  : scheme.onSurfaceVariant.withOpacity(0.5),
               size: 20,
             ),
           ),
@@ -1589,9 +1612,9 @@ class _ConnectedSubjectCard extends StatelessWidget {
               for (final event in result.events.take(3))
                 _DestinationChip(
                   icon: Icons.event_available_outlined,
-                  label: event.fecha == null
+                  label: event.fechaVigente == null
                       ? 'Mesa'
-                      : formatoFechaAtlassian(event.fecha),
+                      : formatoFechaAtlassian(event.fechaVigente),
                   onTap: () => onOpen(
                     DestinoBusquedaAtlassian(
                       tipo: TipoDestinoBusquedaAtlassian.detalleExamen,
@@ -1638,7 +1661,10 @@ class _ExamSearchCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      formatoFechaHoraAtlassian(item.fecha, item.hora),
+                      formatoFechaHoraAtlassian(
+                        item.fechaVigente,
+                        item.horaVigente,
+                      ),
                       style: theme.textTheme.bodyMedium,
                     ),
                   ],
@@ -1668,7 +1694,7 @@ class _ExamSearchCard extends StatelessWidget {
                   DestinoBusquedaAtlassian(
                     tipo: TipoDestinoBusquedaAtlassian.calendario,
                     careerId: item.careerId,
-                    fecha: item.fecha,
+                    fecha: item.fechaVigente,
                   ),
                 ),
               ),

@@ -20,6 +20,66 @@ class RepositorioExamenes {
 
   static final Map<String, Future<List<EventoExamen>>> _eventCache = {};
 
+  Future<List<EventoExamen>> cargarTodos() async {
+    final results = await Future.wait<List<EventoExamen>>([
+      loadJulioLlamado1(),
+      loadJulioLlamado2(),
+      loadJulioColoquios(),
+    ]);
+    final events = results.expand((items) => items).toList()
+      ..removeWhere((event) => event.legacy || !event.visible)
+      ..sort((first, second) {
+        final firstDate = first.fechaHora;
+        final secondDate = second.fechaHora;
+        if (firstDate == null && secondDate == null) {
+          return first.materia.compareTo(second.materia);
+        }
+        if (firstDate == null) return 1;
+        if (secondDate == null) return -1;
+        return firstDate.compareTo(secondDate);
+      });
+    return List<EventoExamen>.unmodifiable(events);
+  }
+
+  Stream<void> observarCambios() {
+    final controller = StreamController<void>();
+    SupabaseClient? client;
+    RealtimeChannel? channel;
+    void notifyChange() {
+      if (!controller.isClosed) controller.add(null);
+    }
+
+    controller.onListen = () {
+      try {
+        final activeClient = Supabase.instance.client;
+        client = activeClient;
+        channel = activeClient
+            .channel('exam-events-shared')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'exam_events',
+              callback: (_) => notifyChange(),
+            )
+            .subscribe((status, error) {
+              // También recupera cambios perdidos antes de una reconexión.
+              if (status == RealtimeSubscribeStatus.subscribed) notifyChange();
+            });
+      } catch (error) {
+        debugPrint('No se pudo escuchar cambios de mesas: $error');
+      }
+    };
+    controller.onCancel = () async {
+      unawaited(controller.close());
+      final activeClient = client;
+      final activeChannel = channel;
+      if (activeClient != null && activeChannel != null) {
+        await activeClient.removeChannel(activeChannel);
+      }
+    };
+    return controller.stream;
+  }
+
   Future<List<EventoExamen>> loadLlamado1() async {
     final list = await _loadSupabaseOrAsset(
       instancia: 'llamado_1',
@@ -72,11 +132,9 @@ class RepositorioExamenes {
           .timeout(const Duration(seconds: 15));
       if (row == null) return null;
       return EventoExamen.fromJson(row);
-    } on TimeoutException {
-      return null;
     } catch (error) {
       debugPrint('Error cargando exam_event $cleanId: $error');
-      return null;
+      rethrow;
     }
   }
 

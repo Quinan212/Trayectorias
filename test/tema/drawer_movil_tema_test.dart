@@ -11,7 +11,8 @@ void main() {
     expect(drawerClaro.backgroundColor, TemaApp.light().colorScheme.surface);
 
     await tester.pumpWidget(_app(TemaApp.dark()));
-    await tester.pump();
+    // MaterialApp interpola el tema: verificamos el color final.
+    await tester.pumpAndSettle();
 
     final drawerOscuro = tester.widget<Drawer>(find.byType(Drawer));
     expect(drawerOscuro.backgroundColor, TemaApp.dark().colorScheme.surface);

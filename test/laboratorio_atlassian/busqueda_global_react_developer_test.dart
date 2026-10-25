@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:correlativas_historia/compartido/navegacion/barra_busqueda_app.dart';
 import 'package:correlativas_historia/funcionalidades/curriculum/proveedores/proveedores_curriculum.dart';
 import 'package:correlativas_historia/funcionalidades/examenes/modelos/evento_examen.dart';
 import 'package:correlativas_historia/funcionalidades/examenes/proveedores/proveedores_examenes.dart';
@@ -11,8 +12,164 @@ import 'package:correlativas_historia/modelos/contenido_curricular.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 void main() {
+  testWidgets(
+    'el buscador mantiene el fondo negro bajo un tema exterior azul',
+    (tester) async {
+      await _montarEntrada(
+        tester,
+        parentTheme: ThemeData.dark(
+          useMaterial3: true,
+        ).copyWith(scaffoldBackgroundColor: const Color(0xFF000020)),
+      );
+      final scaffold = find.descendant(
+        of: find.byType(PantallaBusquedaGlobalReactDeveloper),
+        matching: find.byType(Scaffold),
+      );
+      expect(tester.widget<Scaffold>(scaffold).backgroundColor, Colors.black);
+      await tester.pump(const Duration(seconds: 2));
+      expect(tester.widget<Scaffold>(scaffold).backgroundColor, Colors.black);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'la espera baja un cuarto por visita hasta desaparecer sin parpadeo',
+    (tester) async {
+      await _montarEntrada(tester, openAsRoute: true);
+      final skeleton = find.byKey(const ValueKey('busqueda-react-skeleton'));
+      for (final milliseconds in <int>[2000, 1500, 1000, 500, 0, 0]) {
+        await tester.tap(find.text('Abrir búsqueda'));
+        await tester.pump();
+        // Construye la ruta sin adelantar el reloj del skeleton.
+        await tester.pump();
+        expect(skeleton, findsOneWidget);
+        expect(
+          tester.widget<Skeletonizer>(skeleton).enabled,
+          milliseconds > 0,
+          reason:
+              'Primera imagen de la apertura con espera de $milliseconds ms',
+        );
+        if (milliseconds > 0) {
+          await tester.pump(Duration(milliseconds: milliseconds - 1));
+          expect(tester.widget<Skeletonizer>(skeleton).enabled, isTrue);
+          await tester.pump(const Duration(milliseconds: 1));
+          expect(tester.widget<Skeletonizer>(skeleton).enabled, isFalse);
+        }
+        expect(find.byType(BarraBusquedaApp), findsOneWidget);
+        Navigator.of(
+          tester.element(find.byType(PantallaBusquedaGlobalReactDeveloper)),
+        ).pop();
+        await tester.pumpAndSettle();
+        expect(find.byType(PantallaBusquedaGlobalReactDeveloper), findsNothing);
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+
+  testWidgets('el skeleton dura dos segundos y conserva barra y tarjetas', (
+    tester,
+  ) async {
+    DestinoBusquedaAtlassian? opened;
+    await _montarEntrada(
+      tester,
+      onOpen: (destination) async {
+        opened = destination;
+      },
+    );
+    final skeleton = find.byKey(const ValueKey('busqueda-react-skeleton'));
+    final field = find.byKey(const ValueKey('busqueda-react-liquid-field'));
+    final calendar = find.byKey(
+      const ValueKey('busqueda-react-access-Calendario'),
+    );
+    final fieldElement = tester.element(field);
+    final fieldRect = tester.getRect(field);
+    final calendarElement = tester.element(calendar);
+    final calendarRect = tester.getRect(calendar);
+    expect(tester.widget<Skeletonizer>(skeleton).enabled, isTrue);
+    expect(find.byType(BarraBusquedaApp), findsOneWidget);
+    expect(find.ancestor(of: field, matching: skeleton), findsNothing);
+
+    await tester.tap(calendar, warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 1999));
+    expect(tester.widget<Skeletonizer>(skeleton).enabled, isTrue);
+    expect(opened, isNull);
+
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(tester.widget<Skeletonizer>(skeleton).enabled, isFalse);
+    expect(tester.element(field), same(fieldElement));
+    expect(tester.getRect(field), fieldRect);
+    expect(tester.element(calendar), same(calendarElement));
+    expect(tester.getRect(calendar), calendarRect);
+    await tester.tap(calendar);
+    await tester.pump();
+    expect(opened?.tipo, TipoDestinoBusquedaAtlassian.calendario);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('se puede escribir durante la entrada sin reiniciar el delay', (
+    tester,
+  ) async {
+    await _montarEntrada(tester);
+    final skeleton = find.byKey(const ValueKey('busqueda-react-skeleton'));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.enterText(find.byType(TextField), 'Educación Física');
+    await tester.pump(const Duration(milliseconds: 190));
+    expect(tester.widget<Skeletonizer>(skeleton).enabled, isTrue);
+    await tester.pump(const Duration(milliseconds: 810));
+    expect(tester.widget<Skeletonizer>(skeleton).enabled, isFalse);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Educación Física',
+    );
+    await tester.enterText(find.byType(TextField), 'SAGE');
+    await tester.pump(const Duration(milliseconds: 190));
+    expect(tester.widget<Skeletonizer>(skeleton).enabled, isFalse);
+    expect(find.text('Abrir SAGE'), findsAtLeastNWidgets(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('con movimiento reducido el skeleton permanece estático', (
+    tester,
+  ) async {
+    await _montarEntrada(tester, reducedMotion: true);
+    final skeleton = find.byKey(const ValueKey('busqueda-react-skeleton'));
+    final widget = tester.widget<Skeletonizer>(skeleton);
+    expect(widget.enabled, isTrue);
+    expect(widget.effect, isA<SolidColorEffect>());
+    expect(widget.effect!.duration, Duration.zero);
+    await tester.pump(const Duration(seconds: 2));
+    expect(tester.widget<Skeletonizer>(skeleton).enabled, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'volver durante el skeleton cancela la espera y permite reentrar',
+    (tester) async {
+      await _montarEntrada(tester, openAsRoute: true);
+      await tester.tap(find.text('Abrir búsqueda'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      final skeleton = find.byKey(const ValueKey('busqueda-react-skeleton'));
+      expect(tester.widget<Skeletonizer>(skeleton).enabled, isTrue);
+      await tester.tap(find.byKey(const ValueKey('busqueda-react-back')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(find.byType(PantallaBusquedaGlobalReactDeveloper), findsNothing);
+      await tester.pump(const Duration(seconds: 3));
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Abrir búsqueda'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(tester.widget<Skeletonizer>(skeleton).enabled, isTrue);
+      await tester.pump(const Duration(milliseconds: 1650));
+      expect(tester.widget<Skeletonizer>(skeleton).enabled, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('el clon React abre SAGE y separa cerrar sesión de Salir', (
     tester,
   ) async {
@@ -74,7 +231,7 @@ void main() {
         ),
       ),
     );
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(seconds: 2));
 
     expect(
       find.byKey(const ValueKey('busqueda-react-magic-bento')),
@@ -170,12 +327,7 @@ void main() {
     expect(source, isNot(contains("'Mesas de agosto'")));
     expect(source, contains('busqueda-react-career-carousel'));
     expect(source, contains('busqueda-react-gooey-filter'));
-    expect(source, contains('InputDecoration.collapsed('));
-    expect(source, contains('filled: false'));
-    expect(source, contains('fillColor: Colors.transparent'));
-    expect(source, contains('enabledBorder: InputBorder.none'));
-    expect(source, contains('focusedBorder: InputBorder.none'));
-    expect(source, contains('contentPadding: EdgeInsets.zero'));
+    expect(source, contains('BarraBusquedaApp('));
     expect(source, contains('maxWidth: MediaQuery.sizeOf(context).width - 78'));
     expect(source, contains('overflow: TextOverflow.ellipsis'));
     expect(source, contains('assets/sage_wordmark_react.png'));
@@ -200,9 +352,6 @@ void main() {
     expect(source, contains('clipBehavior: Clip.antiAlias'));
     expect(source, contains('Positioned.fill('));
     expect(source, contains('Transform.translate('));
-    expect(source, contains('alignment: Alignment.bottomRight'));
-    expect(source, contains('offset: const Offset(18, 18)'));
-    expect(source, contains('width: 230'));
     expect(source, isNot(contains('EdgeInsets.only(right: -10)')));
     expect(source, isNot(contains('ClipOval(')));
     expect(
@@ -210,27 +359,60 @@ void main() {
       isNot(contains('width: 50,\n                          height: 50')),
     );
   });
+}
 
-  test(
-    'el Inicio React abre el clon y la búsqueda principal queda intacta',
-    () {
-      final shell = File(
-        'lib/funcionalidades/laboratorio_atlassian/pantallas/'
-        'pantalla_laboratorio_atlassian.dart',
-      ).readAsStringSync(encoding: utf8);
-      final home = File(
-        'lib/funcionalidades/laboratorio_atlassian/pantallas/'
-        'pantalla_inicio_atlassian.dart',
-      ).readAsStringSync(encoding: utf8);
-      final original = File(
-        'lib/funcionalidades/laboratorio_atlassian/busqueda/'
-        'pantalla_busqueda_global_atlassian.dart',
-      ).readAsStringSync(encoding: utf8);
-
-      expect(shell, contains('PantallaBusquedaGlobalReactDeveloper('));
-      expect(shell, contains('onSearch: _openReactSearch'));
-      expect(home, contains('(widget.onReactSearch ?? widget.onSearch)();'));
-      expect(original, contains('class PantallaBusquedaGlobalAtlassian'));
-    },
+Future<void> _montarEntrada(
+  WidgetTester tester, {
+  Future<void> Function(DestinoBusquedaAtlassian)? onOpen,
+  bool reducedMotion = false,
+  bool openAsRoute = false,
+  ThemeData? parentTheme,
+}) async {
+  tester.view.physicalSize = const Size(430, 980);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  final trajectory = ValueNotifier<TrayectoriaSageLaboratorio?>(null);
+  final selectedCareer = ValueNotifier<int>(0);
+  addTearDown(trajectory.dispose);
+  addTearDown(selectedCareer.dispose);
+  addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+  Widget search(BuildContext context) => PantallaBusquedaGlobalReactDeveloper(
+    trajectoryListenable: trajectory,
+    selectedCareerListenable: selectedCareer,
+    onOpenDestination: onOpen ?? (_) async {},
+  );
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        proveedorTodosLosExamenes.overrideWith(
+          (ref) async => const <EventoExamen>[],
+        ),
+        proveedorContenidosCurriculares.overrideWith(
+          (ref) async => const <ContenidoCurricular>[],
+        ),
+      ],
+      child: MaterialApp(
+        theme: parentTheme ?? ThemeData.dark(useMaterial3: true),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(disableAnimations: reducedMotion),
+          child: child!,
+        ),
+        home: openAsRoute
+            ? Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).push<void>(RutaBusquedaApp<void>(builder: search)),
+                    child: const Text('Abrir búsqueda'),
+                  ),
+                ),
+              )
+            : Builder(builder: search),
+      ),
+    ),
   );
 }

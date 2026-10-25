@@ -18,12 +18,16 @@ void main() {
       'lib/funcionalidades/laboratorio_atlassian/busqueda/'
       'pantalla_busqueda_global_react_developer.dart',
     ).readAsStringSync(encoding: utf8);
+    final barra = File(
+      'lib/compartido/navegacion/barra_busqueda_app.dart',
+    ).readAsStringSync(encoding: utf8);
 
     expect(manifest, contains('android:label="Trayectorias"'));
     expect(mainSource, contains("title: 'Trayectorias'"));
     expect(pubspec, contains('display_name: Trayectorias'));
-    expect(reactHome, contains('Buscar en Trayectorias…'));
-    expect(reactSearch, contains('Buscar en Trayectorias…'));
+    expect(reactHome, contains('BarraBusquedaApp('));
+    expect(reactSearch, contains('BarraBusquedaApp('));
+    expect(barra, contains('Buscar en Trayectorias…'));
 
     // Los identificadores técnicos se conservan para no romper instalaciones.
     expect(pubspec, contains('name: correlativas_historia'));

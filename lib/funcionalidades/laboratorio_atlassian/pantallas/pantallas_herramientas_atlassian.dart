@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../compartido/movimiento/movimiento_app.dart';
 import '../../../compartido/proveedores/estado_app.dart';
 import '../../../modelos/materia.dart';
 import '../../calculadora/evaluation_panel.dart';
+import '../../calculadora/pantalla/componentes/contenido_animado_calculadora.dart';
+import '../../calculadora/pantalla/tema/estilos_calculadora.dart';
 import '../../preguntas_frecuentes/preguntas_frecuentes_pantalla.dart';
 import '../../trayectoria_sage_laboratorio/modelos/modelos_trayectoria_sage_laboratorio.dart';
 import '../componentes/componentes_atlassian.dart';
+import '../componentes/trayectoria_activa_atlassian.dart';
 import '../tema/tema_atlassian.dart';
 import 'utilidades_atlassian.dart';
 
@@ -86,52 +90,58 @@ class PantallaEscenariosAtlassian extends ConsumerWidget {
     List<CareerInfo> careers,
     CareerInfo? selectedCareer,
   ) async {
-    final selectedId = await mostrarHojaAtlassian<String>(
+    final selectedId = await _mostrarHojaEscenarios<String>(
       context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Carrera de referencia',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              for (final career in careers) ...[
-                PanelAtlassian(
-                  selected: selectedCareer?.id == career.id,
-                  onTap: () => Navigator.of(sheetContext).pop(career.id),
-                  child: Row(
-                    children: [
-                      Icon(
-                        selectedCareer?.id == career.id
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_off_rounded,
-                        color: selectedCareer?.id == career.id
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          career.nombre,
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                      ),
-                    ],
-                  ),
+      builder: (sheetContext) => SingleChildScrollView(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Carrera de referencia',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+                for (final career in careers) ...[
+                  PanelAtlassian(
+                    selected: selectedCareer?.id == career.id,
+                    onTap: () => Navigator.of(sheetContext).pop(career.id),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selectedCareer?.id == career.id
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_off_rounded,
+                          color: selectedCareer?.id == career.id
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            career.nombre,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
-    if (selectedId == null || !context.mounted) return;
+    if (selectedId == null ||
+        selectedId == selectedCareer?.id ||
+        !context.mounted) {
+      return;
+    }
     ref.read(proveedorIdCarreraSeleccionada.notifier).state = selectedId;
     ref.read(proveedorAnioEvaluacion.notifier).state = 2;
     ref.read(proveedorIdMateriaCalculadoraSeleccionada.notifier).state = null;
@@ -143,34 +153,38 @@ class PantallaEscenariosAtlassian extends ConsumerWidget {
     WidgetRef ref,
     int selectedYear,
   ) async {
-    final selected = await mostrarHojaAtlassian<int>(
+    final selected = await _mostrarHojaEscenarios<int>(
       context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Tramo del plan',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              for (final year in const [1, 2, 3, 4]) ...[
-                PanelAtlassian(
-                  selected: selectedYear == year,
-                  onTap: () => Navigator.of(sheetContext).pop(year),
-                  child: Text('$year° año'),
+      builder: (sheetContext) => SingleChildScrollView(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Tramo del plan',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+                for (final year in const [1, 2, 3, 4]) ...[
+                  PanelAtlassian(
+                    selected: selectedYear == year,
+                    onTap: () => Navigator.of(sheetContext).pop(year),
+                    child: Text('$year° año'),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
-    if (selected == null || !context.mounted) return;
+    if (selected == null || selected == selectedYear || !context.mounted) {
+      return;
+    }
     ref.read(proveedorAnioEvaluacion.notifier).state = selected;
     ref.read(proveedorIdMateriaCalculadoraSeleccionada.notifier).state = null;
     ref.read(proveedorMapaEstadosCorrelativas.notifier).clear();
@@ -182,120 +196,24 @@ class PantallaEscenariosAtlassian extends ConsumerWidget {
     List<Materia> subjects,
     String? selectedId,
   ) async {
-    final controller = TextEditingController();
-    var query = '';
-    final selected = await mostrarHojaAtlassian<String>(
+    final selected = await _mostrarHojaEscenarios<String>(
       context: context,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) {
-          final normalized = query.trim().toLowerCase();
-          final visible = subjects
-              .where((subject) {
-                if (normalized.isEmpty) return true;
-                return '${subject.codigo} ${subject.displayNombre}'
-                    .toLowerCase()
-                    .contains(normalized);
-              })
-              .toList(growable: false);
-          final height = (MediaQuery.sizeOf(context).height * .72)
-              .clamp(380.0, 680.0)
-              .toDouble();
-          return SafeArea(
-            child: SizedBox(
-              height: height,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Materia a evaluar',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 12),
-                    CampoBusquedaAtlassian(
-                      controller: controller,
-                      hintText: 'Buscar materia o código',
-                      onChanged: (value) {
-                        setSheetState(() => query = value);
-                      },
-                      onClear: () {
-                        controller.clear();
-                        setSheetState(() => query = '');
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: visible.isEmpty
-                          ? const EstadoVacioAtlassian(
-                              icon: Icons.search_off_rounded,
-                              title: 'Sin resultados',
-                              message: 'Probá con otro término.',
-                            )
-                          : ListView.separated(
-                              itemCount: visible.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 8),
-                              itemBuilder: (context, index) {
-                                final subject = visible[index];
-                                return PanelAtlassian(
-                                  selected: selectedId == subject.id,
-                                  onTap: () => Navigator.of(
-                                    sheetContext,
-                                  ).pop(subject.id),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              subject.displayNombre,
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.titleSmall,
-                                            ),
-                                            const SizedBox(height: 3),
-                                            Text(
-                                              subject.codigo,
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.bodySmall,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      if (selectedId == subject.id)
-                                        Icon(
-                                          Icons.check_circle_rounded,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primary,
-                                        ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+      builder: (_) => _SelectorMateriaEscenarios(
+        subjects: subjects,
+        selectedId: selectedId,
       ),
     );
-    controller.dispose();
-    if (selected == null || !context.mounted) return;
+    if (selected == null || selected == selectedId || !context.mounted) return;
     ref.read(proveedorIdMateriaCalculadoraSeleccionada.notifier).state =
         selected;
     ref.read(proveedorMapaEstadosCorrelativas.notifier).clear();
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context, WidgetRef ref) =>
+      TemaCalculadora(builder: (context) => _contenido(context, ref));
+
+  Widget _contenido(BuildContext context, WidgetRef ref) {
     final planAsync = ref.watch(proveedorPlan);
     final careers = ref.watch(proveedorCarreras);
     final selectedCareer = ref.watch(proveedorCarreraSeleccionadaONula);
@@ -304,156 +222,379 @@ class PantallaEscenariosAtlassian extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Column(
-        children: [
-          EncabezadoPaginaAtlassian(
-            title: 'Escenarios',
-            subtitle: 'Condiciones y posibilidades de cursada',
-            leading: BotonIconoAtlassian(
-              icon: Icons.arrow_back_rounded,
-              tooltip: 'Volver',
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ),
-          Expanded(
-            child: planAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => EstadoVacioAtlassian(
-                icon: Icons.error_outline_rounded,
-                title: 'No se pudo cargar el plan',
-                message: error.toString(),
+      body: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          children: [
+            EncabezadoPaginaAtlassian(
+              title: 'Escenarios',
+              subtitle: 'Condiciones y posibilidades de cursada',
+              leading: BotonIconoAtlassian(
+                icon: Icons.arrow_back_rounded,
+                tooltip: 'Volver',
+                onPressed: () => volverPantallaAtlassian(context),
               ),
-              data: (plan) {
-                final subjects =
-                    plan.materias
-                        .where((subject) => subject.anio == selectedYear)
-                        .toList()
-                      ..sort(
-                        (first, second) =>
-                            first.displayNombre.compareTo(second.displayNombre),
-                      );
-                Materia? selectedSubject;
-                for (final subject in plan.materias) {
-                  if (subject.id == selectedId) {
-                    selectedSubject = subject;
-                    break;
+            ),
+            Expanded(
+              child: planAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, _) => EstadoVacioAtlassian(
+                  icon: Icons.error_outline_rounded,
+                  title: 'No se pudo cargar el plan',
+                  message: error.toString(),
+                ),
+                data: (plan) {
+                  final subjects =
+                      plan.materias
+                          .where((subject) => subject.anio == selectedYear)
+                          .toList()
+                        ..sort(
+                          (first, second) => first.displayNombre.compareTo(
+                            second.displayNombre,
+                          ),
+                        );
+                  Materia? selectedSubject;
+                  for (final subject in plan.materias) {
+                    if (subject.id == selectedId) {
+                      selectedSubject = subject;
+                      break;
+                    }
                   }
-                }
-                if (selectedId != null && selectedSubject == null) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    ref
-                            .read(
-                              proveedorIdMateriaCalculadoraSeleccionada
-                                  .notifier,
-                            )
-                            .state =
-                        null;
-                    ref.read(proveedorMapaEstadosCorrelativas.notifier).clear();
-                  });
-                }
+                  if (selectedId != null && selectedSubject == null) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      ref
+                              .read(
+                                proveedorIdMateriaCalculadoraSeleccionada
+                                    .notifier,
+                              )
+                              .state =
+                          null;
+                      ref
+                          .read(proveedorMapaEstadosCorrelativas.notifier)
+                          .clear();
+                    });
+                  }
 
-                return ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    const MensajeSeccionAtlassian(
-                      title: 'Calculadora de correlatividades',
-                      message:
-                          'Elegí la carrera, el tramo y la materia para construir el escenario académico actual.',
-                      icon: Icons.auto_graph_rounded,
-                    ),
-                    const SizedBox(height: 12),
-                    PanelAtlassian(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'Datos de referencia',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 12),
-                          SelectorAtlassian(
-                            label: 'Carrera',
-                            value: selectedCareer?.nombre ?? 'Seleccionar',
-                            icon: Icons.school_outlined,
-                            onTap: () => _chooseCareer(
-                              context,
-                              ref,
-                              careers,
-                              selectedCareer,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          SelectorAtlassian(
-                            label: 'Tramo del plan',
-                            value: '$selectedYear° año',
-                            icon: Icons.calendar_view_month_outlined,
-                            enabled: selectedCareer != null,
-                            onTap: selectedCareer == null
-                                ? null
-                                : () => _chooseYear(context, ref, selectedYear),
-                          ),
-                          const SizedBox(height: 10),
-                          SelectorAtlassian(
-                            label: 'Materia',
-                            value:
-                                selectedSubject?.displayNombre ??
-                                'Seleccionar materia',
-                            icon: Icons.menu_book_outlined,
-                            enabled:
-                                selectedCareer != null && subjects.isNotEmpty,
-                            onTap: selectedCareer == null || subjects.isEmpty
-                                ? null
-                                : () => _chooseSubject(
-                                    context,
-                                    ref,
-                                    subjects,
-                                    selectedId,
-                                  ),
-                          ),
-                        ],
+                  return ListView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                    children: [
+                      const EntradaContenidoApp(
+                        child: _IntroduccionEscenarios(),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    if (selectedSubject == null)
-                      EstadoVacioAtlassian(
-                        icon: Icons.account_tree_outlined,
-                        title: selectedCareer == null
-                            ? 'Seleccioná una carrera'
-                            : 'Seleccioná una materia',
-                        message: selectedCareer == null
-                            ? 'La carrera define el plan que se utilizará.'
-                            : 'El resultado aparecerá después de elegir una materia.',
-                      )
-                    else ...[
+                      const SizedBox(height: 12),
                       PanelAtlassian(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            LozengeAtlassian(
-                              label: '$selectedYear° año',
-                              appearance: AparienciaLozengeAtlassian.brand,
+                            Text(
+                              'Datos de referencia',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 12),
+                            ToqueMovimientoApp(
+                              child: SelectorAtlassian(
+                                label: 'Carrera',
+                                value: selectedCareer?.nombre ?? 'Seleccionar',
+                                icon: Icons.school_outlined,
+                                onTap: () => _chooseCareer(
+                                  context,
+                                  ref,
+                                  careers,
+                                  selectedCareer,
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 10),
-                            Text(
-                              selectedSubject.displayNombre,
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            if (selectedSubject.codigo.trim().isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                selectedSubject.codigo,
-                                style: Theme.of(context).textTheme.bodySmall,
+                            ToqueMovimientoApp(
+                              child: SelectorAtlassian(
+                                label: 'Tramo del plan',
+                                value: '$selectedYear° año',
+                                icon: Icons.calendar_view_month_outlined,
+                                enabled: selectedCareer != null,
+                                onTap: selectedCareer == null
+                                    ? null
+                                    : () => _chooseYear(
+                                        context,
+                                        ref,
+                                        selectedYear,
+                                      ),
                               ),
+                            ),
+                            const SizedBox(height: 10),
+                            ToqueMovimientoApp(
+                              child: SelectorAtlassian(
+                                label: 'Materia',
+                                value:
+                                    selectedSubject?.displayNombre ??
+                                    'Seleccionar materia',
+                                icon: Icons.menu_book_outlined,
+                                enabled:
+                                    selectedCareer != null &&
+                                    subjects.isNotEmpty,
+                                onTap:
+                                    selectedCareer == null || subjects.isEmpty
+                                    ? null
+                                    : () => _chooseSubject(
+                                        context,
+                                        ref,
+                                        subjects,
+                                        selectedId,
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ContenidoAnimadoCalculadora(
+                        identidad: selectedSubject?.id ?? 'espera',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (selectedSubject == null)
+                              EstadoVacioAtlassian(
+                                icon: Icons.account_tree_outlined,
+                                title: selectedCareer == null
+                                    ? 'Seleccioná una carrera'
+                                    : 'Seleccioná una materia',
+                                message: selectedCareer == null
+                                    ? 'La carrera define el plan que se utilizará.'
+                                    : 'El resultado aparecerá después de elegir una materia.',
+                              )
+                            else ...[
+                              PanelAtlassian(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    LozengeAtlassian(
+                                      label: '$selectedYear° año',
+                                      appearance:
+                                          AparienciaLozengeAtlassian.brand,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      selectedSubject.displayNombre,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleLarge,
+                                    ),
+                                    if (selectedSubject.codigo
+                                        .trim()
+                                        .isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        selectedSubject.codigo,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              const PanelEvaluacion(),
                             ],
                           ],
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      const PanelEvaluacion(),
                     ],
-                  ],
-                );
-              },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectorMateriaEscenarios extends StatefulWidget {
+  const _SelectorMateriaEscenarios({required this.subjects, this.selectedId});
+
+  final List<Materia> subjects;
+  final String? selectedId;
+
+  @override
+  State<_SelectorMateriaEscenarios> createState() =>
+      _SelectorMateriaEscenariosState();
+}
+
+class _SelectorMateriaEscenariosState
+    extends State<_SelectorMateriaEscenarios> {
+  final _controller = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    // La hoja conserva el controlador hasta terminar su animación de salida.
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final normalized = _query.trim().toLowerCase();
+      final visible = widget.subjects
+          .where((subject) {
+            if (normalized.isEmpty) return true;
+            return '${subject.codigo} ${subject.displayNombre}'
+                .toLowerCase()
+                .contains(normalized);
+          })
+          .toList(growable: false);
+      final height = (constraints.maxHeight * .85).clamp(0.0, 680.0);
+      return SafeArea(
+        child: SizedBox(
+          height: height,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Materia a evaluar',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                CampoBusquedaAtlassian(
+                  controller: _controller,
+                  hintText: 'Buscar materia o código',
+                  onChanged: (value) {
+                    setState(() => _query = value);
+                  },
+                  onClear: () {
+                    _controller.clear();
+                    setState(() => _query = '');
+                  },
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: visible.isEmpty
+                      ? const EstadoVacioAtlassian(
+                          icon: Icons.search_off_rounded,
+                          title: 'Sin resultados',
+                          message: 'Probá con otro término.',
+                        )
+                      : ListView.separated(
+                          itemCount: visible.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final subject = visible[index];
+                            return PanelAtlassian(
+                              selected: widget.selectedId == subject.id,
+                              onTap: () =>
+                                  Navigator.of(context).pop(subject.id),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          subject.displayNombre,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleSmall,
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          subject.codigo,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodySmall,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (widget.selectedId == subject.id)
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                    ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+Future<T?> _mostrarHojaEscenarios<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+}) => showModalBottomSheet<T>(
+  context: context,
+  isScrollControlled: true,
+  useSafeArea: true,
+  showDragHandle: true,
+  backgroundColor: EstilosCalculadora.fondoTarjeta(context),
+  sheetAnimationStyle: AnimationStyle(
+    duration: MovimientoApp.duracion(context, MovimientoApp.ruta),
+    reverseDuration: MovimientoApp.duracion(context, MovimientoApp.salida),
+  ),
+  builder: (context) => TemaCalculadora(
+    builder: (context) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: builder(context),
+    ),
+  ),
+);
+
+class _IntroduccionEscenarios extends StatelessWidget {
+  const _IntroduccionEscenarios();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [scheme.primaryContainer, scheme.surface],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.auto_graph_rounded, color: scheme.primary, size: 28),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Calculadora de correlatividades',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Elegí la carrera, el tramo y la materia para construir el escenario académico actual.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -477,7 +618,7 @@ class PantallaAyudaAtlassian extends StatelessWidget {
             leading: BotonIconoAtlassian(
               icon: Icons.arrow_back_rounded,
               tooltip: 'Volver',
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => volverPantallaAtlassian(context),
             ),
           ),
           const Expanded(
@@ -499,7 +640,8 @@ class PantallaProximosPasosAtlassian extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final current = career;
+    final activa = TrayectoriaActivaAtlassian.de(context);
+    final current = activa == null ? career : activa.carreraActual;
     final regular =
         current?.materias
             .where(
@@ -536,7 +678,7 @@ class PantallaProximosPasosAtlassian extends StatelessWidget {
             leading: BotonIconoAtlassian(
               icon: Icons.arrow_back_rounded,
               tooltip: 'Volver',
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => volverPantallaAtlassian(context),
             ),
           ),
           Expanded(
@@ -589,7 +731,8 @@ class PantallaAvanceAtlassian extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final current = career;
+    final activa = TrayectoriaActivaAtlassian.de(context);
+    final current = activa == null ? career : activa.carreraActual;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Column(
@@ -602,7 +745,7 @@ class PantallaAvanceAtlassian extends StatelessWidget {
             leading: BotonIconoAtlassian(
               icon: Icons.arrow_back_rounded,
               tooltip: 'Volver',
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => volverPantallaAtlassian(context),
             ),
           ),
           Expanded(

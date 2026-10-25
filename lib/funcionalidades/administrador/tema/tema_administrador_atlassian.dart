@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../compartido/movimiento/movimiento_app.dart';
 import '../../../compartido/proveedores/estado_app.dart';
 import '../../laboratorio_atlassian/tema/tema_atlassian.dart';
 
@@ -35,7 +36,7 @@ MaterialPageRoute<T> rutaAdministradorAtlassian<T>(
   BuildContext context,
   Widget child,
 ) {
-  return MaterialPageRoute<T>(
+  return RutaMovimientoApp<T>(
     builder: (_) => TemaAdministradorAtlassian(child: child),
   );
 }

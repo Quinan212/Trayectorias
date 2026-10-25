@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../compartido/movimiento/movimiento_app.dart';
 import '../../../compartido/proveedores/estado_app.dart';
 import 'panel_estilos.dart';
 
@@ -30,15 +31,15 @@ class PanelResultado {
       switch (label) {
         case 'No puede cursar':
         case 'Todavía no podés cursar':
-          return const Color(0xFFC96F5D);
+          return dark ? const Color(0xFFFFB4A9) : const Color(0xFF9E3025);
         case 'Cursada condicional':
         case 'Cursada condicionada':
         case 'Cursa con restricciones':
         case 'Podés cursar con restricciones':
-          return const Color(0xFFD9A35F);
+          return dark ? const Color(0xFFFFD38A) : const Color(0xFF815000);
         case 'Puede cursar sin restricciones':
         case 'Podés cursar':
-          return const Color(0xFF005B7F);
+          return dark ? const Color(0xFF9BE1D5) : const Color(0xFF005B7F);
         default:
           return dark ? cs.onSurface : const Color(0xFF374151);
       }
@@ -47,21 +48,25 @@ class PanelResultado {
     Widget cap(String title, bool on, {bool restricted = false}) {
       final bg = on
           ? (restricted
-              ? (dark
-                  ? EstilosPanel.darken(const Color(0xFFD9A35F), 0.78)
-                  : const Color(0xFFF6E7CC))
-              : (dark
-                  ? EstilosPanel.darken(const Color(0xFF63A8AE), 0.78)
-                  : const Color(0xFFDDECEF)))
+                ? (dark
+                      ? EstilosPanel.darken(const Color(0xFFD9A35F), 0.78)
+                      : const Color(0xFFF6E7CC))
+                : (dark
+                      ? EstilosPanel.darken(const Color(0xFF63A8AE), 0.78)
+                      : const Color(0xFFDDECEF)))
           : (dark
-              ? EstilosPanel.darken(cs.surface, 0.30)
-              : const Color(0xFFF3F4F6));
+                ? EstilosPanel.darken(cs.surface, 0.30)
+                : const Color(0xFFF3F4F6));
 
       final fg = on
-          ? (restricted ? const Color(0xFFD9A35F) : const Color(0xFF005B7F))
-          : (dark ? cs.onSurfaceVariant : const Color(0xFF6B7280));
+          ? (restricted
+                ? (dark ? const Color(0xFFFFD38A) : const Color(0xFF815000))
+                : (dark ? const Color(0xFF9BE1D5) : const Color(0xFF005B7F)))
+          : EstilosPanel.subtitleColor(context);
 
-      return Container(
+      return AnimatedContainer(
+        duration: MovimientoApp.duracion(context, MovimientoApp.respuesta),
+        curve: MovimientoApp.curva,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: bg,

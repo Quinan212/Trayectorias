@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:correlativas_historia/compartido/proveedores/datos_catalogo.dart';
 import 'package:correlativas_historia/compartido/utilidades/sanitizar_texto.dart';
@@ -17,7 +16,11 @@ import 'package:correlativas_historia/modelos/materia.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
+import '../../../compartido/movimiento/movimiento_app.dart';
+import '../../../compartido/navegacion/barra_busqueda_app.dart';
+import '../../../compartido/tema/tema_herramientas_app.dart';
 import 'modelos_busqueda_atlassian.dart';
 import 'pantalla_busqueda_global_atlassian.dart'
     show
@@ -51,6 +54,21 @@ class PantallaBusquedaGlobalReactDeveloper extends ConsumerStatefulWidget {
       _PantallaBusquedaGlobalReactDeveloperState();
 }
 
+// Conserva la progresión entre rutas durante esta ejecución de la app.
+final _demoraEntradaBusquedaProvider = Provider<_DemoraEntradaBusqueda>(
+  (ref) => _DemoraEntradaBusqueda(),
+);
+
+class _DemoraEntradaBusqueda {
+  int _aperturas = 0;
+
+  Duration siguiente() {
+    final milliseconds = math.max(0, 2000 - _aperturas * 500);
+    _aperturas = math.min(4, _aperturas + 1);
+    return Duration(milliseconds: milliseconds);
+  }
+}
+
 enum _ReactSearchCategory { all, subjects, events, actions, careers, profile }
 
 class _PantallaBusquedaGlobalReactDeveloperState
@@ -65,7 +83,11 @@ class _PantallaBusquedaGlobalReactDeveloperState
   final List<_PlanCarreraBusqueda> _planes = <_PlanCarreraBusqueda>[];
   final List<String> _recentQueries = <String>[];
 
-  bool _loadingPlans = true;
+  // Conserva el contenido y sus posiciones al retirar el skeleton.
+  final GlobalKey _contentKey = GlobalKey();
+  bool _preparingEntry = false;
+  Timer? _entryDelay;
+
   bool _sageExpanded = false;
   String _query = '';
   Timer? _debounce;
@@ -73,6 +95,8 @@ class _PantallaBusquedaGlobalReactDeveloperState
   int _careerPage = 0;
 
   _SearchModel? _cachedModel;
+  List<EventoExamen>? _cachedExams;
+  List<ContenidoCurricular>? _cachedCurricular;
   String? _lastQueryKey;
 
   List<CareerInfo> get _visibleCareers =>
@@ -81,6 +105,14 @@ class _PantallaBusquedaGlobalReactDeveloperState
   @override
   void initState() {
     super.initState();
+    final delay = ref.read(_demoraEntradaBusquedaProvider).siguiente();
+    _preparingEntry = delay > Duration.zero;
+    if (_preparingEntry) {
+      _entryDelay = Timer(delay, () {
+        if (!mounted) return;
+        setState(() => _preparingEntry = false);
+      });
+    }
     unawaited(_loadPlans());
   }
 
@@ -103,7 +135,6 @@ class _PantallaBusquedaGlobalReactDeveloperState
       _planes
         ..clear()
         ..addAll(loaded);
-      _loadingPlans = false;
       _cachedModel = null;
       _lastQueryKey = null;
     });
@@ -111,6 +142,7 @@ class _PantallaBusquedaGlobalReactDeveloperState
 
   @override
   void dispose() {
+    _entryDelay?.cancel();
     _debounce?.cancel();
     _controller.dispose();
     _focusNode.dispose();
@@ -286,9 +318,6 @@ class _PantallaBusquedaGlobalReactDeveloperState
     final curricularAsync = ref.watch(proveedorContenidosCurriculares);
     final exams = examsAsync.value ?? const <EventoExamen>[];
     final curricular = curricularAsync.value ?? const <ContenidoCurricular>[];
-    final loading =
-        _loadingPlans || examsAsync.isLoading || curricularAsync.isLoading;
-
     return ValueListenableBuilder<TrayectoriaSageLaboratorio?>(
       valueListenable: widget.trajectoryListenable,
       builder: (context, trajectory, _) {
@@ -305,7 +334,12 @@ class _PantallaBusquedaGlobalReactDeveloperState
               curricular.length,
               _planes.length,
             ].join('|');
-            if (_cachedModel == null || _lastQueryKey != queryKey) {
+            if (_cachedModel == null ||
+                _lastQueryKey != queryKey ||
+                !identical(_cachedExams, exams) ||
+                !identical(_cachedCurricular, curricular)) {
+              _cachedExams = exams;
+              _cachedCurricular = curricular;
               _lastQueryKey = queryKey;
               _cachedModel = _buildSearchModel(
                 query: query,
@@ -321,25 +355,67 @@ class _PantallaBusquedaGlobalReactDeveloperState
             return Theme(
               data: atlassianTheme,
               child: Scaffold(
-                backgroundColor: reactTheme.canvas,
+                backgroundColor: reactTheme.isDark
+                    ? atlassianTheme.scaffoldBackgroundColor
+                    : reactTheme.canvas,
                 resizeToAvoidBottomInset: true,
                 body: Stack(
                   children: [
                     Positioned.fill(
-                      child: query.isEmpty
-                          ? _buildLanding(
-                              context,
-                              trajectory,
-                              selectedCareer,
-                              exams,
-                            )
-                          : _buildResults(context, model),
+                      child: SafeArea(
+                        top: false,
+                        minimum: const EdgeInsets.only(bottom: 8),
+                        child: RepaintBoundary(
+                          child: Semantics(
+                            label: _preparingEntry
+                                ? 'Preparando búsqueda'
+                                : null,
+                            child: ExcludeSemantics(
+                              excluding: _preparingEntry,
+                              child: ExcludeFocus(
+                                excluding: _preparingEntry,
+                                child: Skeletonizer(
+                                  key: const ValueKey(
+                                    'busqueda-react-skeleton',
+                                  ),
+                                  enabled: _preparingEntry,
+                                  enableSwitchAnimation: false,
+                                  effect:
+                                      MediaQuery.disableAnimationsOf(context)
+                                      ? SolidColorEffect(
+                                          color: reactTheme.isDark
+                                              ? const Color(0xFF303645)
+                                              : const Color(0xFFE0E8F2),
+                                        )
+                                      : null,
+                                  child: KeyedSubtree(
+                                    key: _contentKey,
+                                    child: query.isEmpty
+                                        ? _buildLanding(
+                                            context,
+                                            trajectory,
+                                            selectedCareer,
+                                            exams,
+                                          )
+                                        : _buildResults(context, model),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                    _BottomSearchFadeReact(
-                      child: _LiquidSearchComposerReact(
+                    Positioned(
+                      left: 70,
+                      right: 16,
+                      top: MediaQuery.paddingOf(context).top + 8,
+                      child: BarraBusquedaApp(
+                        key: const ValueKey<String>(
+                          'busqueda-react-liquid-field',
+                        ),
                         controller: _controller,
                         focusNode: _focusNode,
-                        loading: loading,
                         onChanged: _onChanged,
                         onSubmitted: (_) => _rememberQuery(),
                         onClear: _clearQuery,
@@ -375,7 +451,7 @@ class _PantallaBusquedaGlobalReactDeveloperState
         .where((item) => item.group == _ActionGroup.sage)
         .toList(growable: false);
     final suggestions = _suggestedQueries(exams, trajectory, selectedCareer);
-    final topSpacing = MediaQuery.paddingOf(context).top + 76;
+    final topSpacing = MediaQuery.paddingOf(context).top + 90;
 
     return CustomScrollView(
       key: const ValueKey<String>('busqueda-react-landing'),
@@ -396,9 +472,14 @@ class _PantallaBusquedaGlobalReactDeveloperState
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           sliver: SliverToBoxAdapter(
-            child: _AccessMagicBentoReact(
-              actions: navigation,
-              onTap: (action) => _open(action.destination),
+            child: _EntradaMenuReact(
+              key: const ValueKey('menu-accesos'),
+              lista: !_preparingEntry,
+              orden: 1,
+              child: _AccessMagicBentoReact(
+                actions: navigation,
+                onTap: (action) => _open(action.destination),
+              ),
             ),
           ),
         ),
@@ -414,9 +495,14 @@ class _PantallaBusquedaGlobalReactDeveloperState
         ),
         const SliverToBoxAdapter(child: SizedBox(height: 12)),
         SliverToBoxAdapter(
-          child: _ToolsDockReact(
-            actions: tools,
-            onTap: (action) => _open(action.destination),
+          child: _EntradaMenuReact(
+            key: const ValueKey('menu-herramientas'),
+            lista: !_preparingEntry,
+            orden: 2,
+            child: _ToolsDockReact(
+              actions: tools,
+              onTap: (action) => _open(action.destination),
+            ),
           ),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: 30)),
@@ -456,11 +542,16 @@ class _PantallaBusquedaGlobalReactDeveloperState
         ),
         const SliverToBoxAdapter(child: SizedBox(height: 12)),
         SliverToBoxAdapter(
-          child: _CareerDepthCarouselReact(
-            controller: _careerPageController,
-            careers: _visibleCareers,
-            onPageChanged: (index) => setState(() => _careerPage = index),
-            onOpen: _open,
+          child: _EntradaMenuReact(
+            key: const ValueKey('menu-instituciones'),
+            lista: !_preparingEntry,
+            orden: 3,
+            child: _CareerDepthCarouselReact(
+              controller: _careerPageController,
+              careers: _visibleCareers,
+              onPageChanged: (index) => setState(() => _careerPage = index),
+              onOpen: _open,
+            ),
           ),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: 30)),
@@ -489,7 +580,7 @@ class _PantallaBusquedaGlobalReactDeveloperState
   Widget _buildResults(BuildContext context, _SearchModel model) {
     final total = _categoryCount(model, _ReactSearchCategory.all);
     final activeCount = _categoryCount(model, _category);
-    final topSpacing = MediaQuery.paddingOf(context).top + 76;
+    final topSpacing = MediaQuery.paddingOf(context).top + 90;
     final slivers = <Widget>[
       SliverToBoxAdapter(child: SizedBox(height: topSpacing)),
       SliverPadding(
@@ -1460,54 +1551,14 @@ class _PantallaBusquedaGlobalReactDeveloperState
 
 class _TopFadeReact extends StatelessWidget {
   const _TopFadeReact({required this.onBack});
-
   final VoidCallback onBack;
 
   @override
-  Widget build(BuildContext context) {
-    final top = MediaQuery.paddingOf(context).top;
-    return Positioned(
-      left: 0,
-      right: 0,
-      top: 0,
-      height: top + 72,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: ClipRect(
-                child: ShaderMask(
-                  shaderCallback: (rect) => const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.black, Colors.black87, Colors.transparent],
-                    stops: [0, 0.46, 1],
-                  ).createShader(rect),
-                  blendMode: BlendMode.dstIn,
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(
-                      sigmaX: context.reactTheme.isDark ? 14 : 0,
-                      sigmaY: context.reactTheme.isDark ? 14 : 0,
-                    ),
-                    child: ColoredBox(
-                      color: context.reactTheme.canvas.withValues(
-                        alpha: context.reactTheme.isDark ? 0.58 : 0.08,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 16,
-            top: top + 10,
-            child: _FloatingBackReact(onTap: onBack),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Positioned(
+    left: 16,
+    top: MediaQuery.paddingOf(context).top + 15,
+    child: _FloatingBackReact(onTap: onBack),
+  );
 }
 
 class _FloatingBackReact extends StatefulWidget {
@@ -1529,9 +1580,7 @@ class _FloatingBackReactState extends State<_FloatingBackReact> {
       button: true,
       label: 'Volver',
       child: AnimatedScale(
-        duration: reduceMotion
-            ? Duration.zero
-            : const Duration(milliseconds: 140),
+        duration: reduceMotion ? Duration.zero : MovimientoApp.respuesta,
         scale: _pressed ? 0.92 : 1,
         child: DecoratedBox(
           key: const ValueKey<String>('busqueda-react-back-shadow'),
@@ -1577,312 +1626,6 @@ class _FloatingBackReactState extends State<_FloatingBackReact> {
   }
 }
 
-class _BottomSearchFadeReact extends StatelessWidget {
-  const _BottomSearchFadeReact({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.paddingOf(context).bottom;
-    final reactTheme = context.reactTheme;
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      height: bottom + 148,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: ClipRect(
-                child: ShaderMask(
-                  key: const ValueKey<String>('busqueda-react-bottom-fade'),
-                  shaderCallback: (rect) => const LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Colors.black, Colors.black87, Colors.transparent],
-                    stops: [0, 0.46, 1],
-                  ).createShader(rect),
-                  blendMode: BlendMode.dstIn,
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(
-                      sigmaX: reactTheme.isDark ? 16 : 20,
-                      sigmaY: reactTheme.isDark ? 16 : 20,
-                    ),
-                    child: ColoredBox(
-                      color: reactTheme.canvas.withValues(
-                        alpha: reactTheme.isDark ? 0.58 : 0.12,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Align(alignment: Alignment.bottomCenter, child: child),
-        ],
-      ),
-    );
-  }
-}
-
-class _LiquidSearchComposerReact extends StatefulWidget {
-  const _LiquidSearchComposerReact({
-    required this.controller,
-    required this.focusNode,
-    required this.loading,
-    required this.onChanged,
-    required this.onSubmitted,
-    required this.onClear,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final bool loading;
-  final ValueChanged<String> onChanged;
-  final ValueChanged<String> onSubmitted;
-  final VoidCallback onClear;
-
-  @override
-  State<_LiquidSearchComposerReact> createState() =>
-      _LiquidSearchComposerReactState();
-}
-
-class _LiquidSearchComposerReactState
-    extends State<_LiquidSearchComposerReact> {
-  bool _focused = false;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.focusNode.addListener(_onFocusChanged);
-  }
-
-  @override
-  void didUpdateWidget(covariant _LiquidSearchComposerReact oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.focusNode != widget.focusNode) {
-      oldWidget.focusNode.removeListener(_onFocusChanged);
-      widget.focusNode.addListener(_onFocusChanged);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.focusNode.removeListener(_onFocusChanged);
-    super.dispose();
-  }
-
-  void _onFocusChanged() {
-    if (mounted) setState(() => _focused = widget.focusNode.hasFocus);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final scheme = Theme.of(context).colorScheme;
-    final reactTheme = context.reactTheme;
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: AnimatedContainer(
-          key: const ValueKey<String>('busqueda-react-liquid-field'),
-          duration: reduceMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 220),
-          padding: const EdgeInsets.all(1.2),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(31),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(
-                  0xFF85B8FF,
-                ).withValues(alpha: _focused ? 0.88 : 0.72),
-                reactTheme.neutralOverlay(0.14),
-                const Color(
-                  0xFFA78BFA,
-                ).withValues(alpha: _focused ? 0.64 : 0.48),
-              ],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF0C66E4).withValues(alpha: 0.17),
-                blurRadius: 22,
-                spreadRadius: -4,
-                offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: reactTheme.shadow,
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(30),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: Container(
-                key: const ValueKey<String>('busqueda-react-liquid-surface'),
-                height: 58,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: reactTheme.liquidGradient(scheme),
-                    stops: const [0.0, 0.34, 0.70, 1.0],
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      key: const ValueKey<String>(
-                        'busqueda-react-liquid-leading',
-                      ),
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xFF0C66E4), Color(0xFF7C66E8)],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(
-                              0xFF579DFF,
-                            ).withValues(alpha: 0.30),
-                            blurRadius: 14,
-                            spreadRadius: -2,
-                          ),
-                        ],
-                      ),
-                      child: AnimatedSwitcher(
-                        duration: reduceMotion
-                            ? Duration.zero
-                            : const Duration(milliseconds: 180),
-                        child: widget.loading
-                            ? const SizedBox(
-                                key: ValueKey<String>('search-loading'),
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(
-                                Icons.search_rounded,
-                                key: ValueKey<String>('search-icon'),
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                      ),
-                    ),
-                    const SizedBox(width: 13),
-                    Expanded(
-                      child: TextField(
-                        controller: widget.controller,
-                        focusNode: widget.focusNode,
-                        textInputAction: TextInputAction.search,
-                        onChanged: widget.onChanged,
-                        onSubmitted: widget.onSubmitted,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: scheme.onSurface.withValues(alpha: 0.92),
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.2,
-                        ),
-                        decoration:
-                            InputDecoration.collapsed(
-                              hintText: 'Buscar en Trayectorias…',
-                              hintStyle: Theme.of(context).textTheme.bodyLarge
-                                  ?.copyWith(
-                                    color: scheme.onSurface.withValues(
-                                      alpha: 0.92,
-                                    ),
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: -0.2,
-                                  ),
-                            ).copyWith(
-                              filled: false,
-                              fillColor: Colors.transparent,
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              disabledBorder: InputBorder.none,
-                              errorBorder: InputBorder.none,
-                              focusedErrorBorder: InputBorder.none,
-                              contentPadding: EdgeInsets.zero,
-                              isCollapsed: true,
-                            ),
-                      ),
-                    ),
-                    ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: widget.controller,
-                      builder: (context, value, _) {
-                        final hasText = value.text.isNotEmpty;
-                        return Semantics(
-                          button: true,
-                          label: hasText
-                              ? 'Limpiar búsqueda'
-                              : 'Escribir búsqueda',
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              key: const ValueKey<String>(
-                                'search-trailing-action',
-                              ),
-                              onTap: hasText
-                                  ? widget.onClear
-                                  : widget.focusNode.requestFocus,
-                              customBorder: const CircleBorder(),
-                              child: Container(
-                                key: const ValueKey<String>(
-                                  'busqueda-react-liquid-trailing',
-                                ),
-                                width: 34,
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: reactTheme.neutralOverlay(0.06),
-                                  border: Border.all(color: reactTheme.border),
-                                ),
-                                child: AnimatedSwitcher(
-                                  duration: reduceMotion
-                                      ? Duration.zero
-                                      : const Duration(milliseconds: 160),
-                                  child: Icon(
-                                    hasText
-                                        ? Icons.close_rounded
-                                        : Icons.arrow_forward_rounded,
-                                    key: ValueKey<bool>(hasText),
-                                    color: scheme.onSurfaceVariant,
-                                    size: 18,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _SplitSearchTitleReact extends StatelessWidget {
   const _SplitSearchTitleReact({
     required this.title,
@@ -1900,9 +1643,7 @@ class _SplitSearchTitleReact extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       key: ValueKey<String>('split-$title-$subtitle'),
       tween: Tween<double>(begin: 0, end: 1),
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 420),
+      duration: reduceMotion ? Duration.zero : MovimientoApp.entrada,
       curve: Curves.easeOutCubic,
       builder: (context, progress, child) => Opacity(
         opacity: progress,
@@ -1971,6 +1712,70 @@ class _ReactSectionTitle extends StatelessWidget {
       ],
     );
   }
+}
+
+// La entrada conserva los elementos y sus posiciones al retirar el skeleton.
+// Sólo cambia la opacidad del contenido; la barra pertenece a otra capa.
+class _EntradaMenuReact extends StatefulWidget {
+  const _EntradaMenuReact({
+    super.key,
+    required this.lista,
+    required this.orden,
+    required this.child,
+  });
+
+  final bool lista;
+  final int orden;
+  final Widget child;
+
+  @override
+  State<_EntradaMenuReact> createState() => _EntradaMenuReactState();
+}
+
+class _EntradaMenuReactState extends State<_EntradaMenuReact>
+    with SingleTickerProviderStateMixin {
+  late final _reloj = AnimationController(vsync: this);
+  bool _iniciado = false;
+  bool _reducido = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reducido = MediaQuery.disableAnimationsOf(context);
+    _reloj.duration = _reducido
+        ? Duration.zero
+        : MovimientoApp.entrada + Duration(milliseconds: widget.orden * 25);
+    if (_reducido || !widget.lista) {
+      _reloj.value = 1;
+    } else if (!_iniciado) {
+      _reloj.forward();
+    }
+    _iniciado = true;
+  }
+
+  @override
+  void didUpdateWidget(_EntradaMenuReact oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.lista && widget.lista && !_reducido) {
+      _reloj.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _reloj.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _reloj,
+    child: widget.child,
+    builder: (_, child) => Opacity(
+      opacity: MovimientoApp.curva.transform(_reloj.value),
+      child: child,
+    ),
+  );
 }
 
 class _AccessMagicBentoReact extends StatelessWidget {
@@ -2052,7 +1857,7 @@ class _AccessMagicBentoReact extends StatelessWidget {
   }
 }
 
-class _MagicAccessCardReact extends StatefulWidget {
+class _MagicAccessCardReact extends StatelessWidget {
   const _MagicAccessCardReact({
     required this.action,
     required this.height,
@@ -2068,46 +1873,53 @@ class _MagicAccessCardReact extends StatefulWidget {
   final bool horizontal;
 
   @override
-  State<_MagicAccessCardReact> createState() => _MagicAccessCardReactState();
-}
-
-class _MagicAccessCardReactState extends State<_MagicAccessCardReact> {
-  bool _pressed = false;
-
-  @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final duration = reduceMotion
-        ? Duration.zero
-        : const Duration(milliseconds: 170);
     final reactTheme = context.reactTheme;
-    final accent = reactTheme.decorativeAccent(widget.colors.first);
+    final accent = reactTheme.decorativeAccent(colors.first);
+    final foreground = reactTheme.isDark
+        ? const Color(0xFFF2F4FF)
+        : reactTheme.text;
+    final secondary = reactTheme.isDark
+        ? const Color(0xFFD4DBEC)
+        : reactTheme.textMuted;
+    final titleStyle = Theme.of(context).textTheme.titleMedium;
+    final subtitleStyle = Theme.of(context).textTheme.bodySmall;
+    final scaler = MediaQuery.textScalerOf(context);
+    final labelsHeight =
+        (scaler.scale(titleStyle?.fontSize ?? 16) * 1.05).ceilToDouble() * 2 +
+        4 +
+        (scaler.scale(subtitleStyle?.fontSize ?? 12) * 1.15).ceilToDouble() *
+            (horizontal ? 1 : 2);
+    final cardHeight = math.max(
+      height,
+      labelsHeight + 40 + (horizontal ? 0 : 54),
+    );
     final icon = Container(
       width: 42,
       height: 42,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: reactTheme.isDark
-            ? reactTheme.neutralOverlay(0.08)
+            ? Colors.white.withValues(alpha: 0.12)
             : accent.withValues(alpha: 0.10),
         border: Border.all(
           color: reactTheme.isDark
-              ? reactTheme.border
+              ? Colors.white.withValues(alpha: 0.28)
               : accent.withValues(alpha: 0.62),
         ),
       ),
-      child: Icon(widget.action.icon, color: reactTheme.text, size: 21),
+      child: Icon(action.icon, color: foreground, size: 21),
     );
     final labels = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          widget.action.title.toLowerCase(),
+          action.title.toLowerCase(),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: reactTheme.text,
+          style: titleStyle?.copyWith(
+            color: foreground,
             fontWeight: FontWeight.w900,
             letterSpacing: -0.4,
             height: 1.05,
@@ -2115,72 +1927,58 @@ class _MagicAccessCardReactState extends State<_MagicAccessCardReact> {
         ),
         const SizedBox(height: 4),
         Text(
-          widget.action.subtitle.toLowerCase(),
-          maxLines: widget.horizontal ? 1 : 2,
+          action.subtitle.toLowerCase(),
+          maxLines: horizontal ? 1 : 2,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: reactTheme.muted(0.82),
-            height: 1.15,
-          ),
+          style: subtitleStyle?.copyWith(color: secondary, height: 1.15),
         ),
       ],
     );
-    return AnimatedScale(
-      duration: duration,
-      scale: _pressed ? 0.975 : 1,
+    return ToqueMovimientoApp(
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: widget.onTap,
-          onHighlightChanged: (pressed) => setState(() => _pressed = pressed),
+          onTap: onTap,
           borderRadius: BorderRadius.circular(28),
-          child: ReactGlassBlur(
-            borderRadius: BorderRadius.circular(28),
-            child: AnimatedContainer(
-              key: ValueKey<String>(
-                'busqueda-react-access-${widget.action.title}',
+          child: Container(
+            key: ValueKey<String>('busqueda-react-access-${action.title}'),
+            height: cardHeight,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: reactTheme.cardGradient(colors),
               ),
-              duration: duration,
-              height: widget.height,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: reactTheme.cardGradient(widget.colors),
-                ),
-                border: Border.all(
-                  color: _pressed
-                      ? reactTheme.foreground(reactTheme.isDark ? 0.24 : 0.28)
-                      : reactTheme.isDark
-                      ? reactTheme.border
-                      : accent.withValues(alpha: 0.62),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: accent.withValues(
-                      alpha: reactTheme.isDark ? 0.26 : 0.10,
-                    ),
-                    blurRadius: 24,
-                    spreadRadius: -8,
-                    offset: const Offset(0, 14),
+              border: Border.all(
+                color: reactTheme.isDark
+                    ? const Color(0xFF687386)
+                    : accent.withValues(alpha: 0.62),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(
+                    alpha: reactTheme.isDark ? 0.26 : 0.10,
                   ),
-                ],
-              ),
-              child: widget.horizontal
-                  ? Row(
-                      children: [
-                        icon,
-                        const SizedBox(width: 14),
-                        Expanded(child: labels),
-                      ],
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [icon, const Spacer(), labels],
-                    ),
+                  blurRadius: 24,
+                  spreadRadius: -8,
+                  offset: const Offset(0, 14),
+                ),
+              ],
             ),
+            child: horizontal
+                ? Row(
+                    children: [
+                      icon,
+                      const SizedBox(width: 14),
+                      Expanded(child: labels),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [icon, const Spacer(), labels],
+                  ),
           ),
         ),
       ),
@@ -2198,7 +1996,14 @@ class _ToolsDockReact extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       key: const ValueKey<String>('busqueda-react-tools-dock'),
-      height: 110,
+      height: math.max(
+        110,
+        52 +
+            MediaQuery.textScalerOf(context).scale(
+                  Theme.of(context).textTheme.labelSmall?.fontSize ?? 11,
+                ) *
+                2.1,
+      ),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -2213,42 +2018,34 @@ class _ToolsDockReact extends StatelessWidget {
   }
 }
 
-class _ToolDockItemReact extends StatefulWidget {
+class _ToolDockItemReact extends StatelessWidget {
   const _ToolDockItemReact({required this.action, required this.onTap});
 
   final _SearchAction action;
   final VoidCallback onTap;
 
   @override
-  State<_ToolDockItemReact> createState() => _ToolDockItemReactState();
-}
-
-class _ToolDockItemReactState extends State<_ToolDockItemReact> {
-  bool _pressed = false;
-
-  @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final reactTheme = context.reactTheme;
-    return AnimatedScale(
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 150),
-      scale: _pressed ? 1.08 : 1,
+    final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    return ToqueMovimientoApp(
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: widget.onTap,
-          onHighlightChanged: (pressed) => setState(() => _pressed = pressed),
+          onTap: onTap,
           borderRadius: BorderRadius.circular(22),
           child: Container(
-            key: ValueKey<String>('busqueda-react-tool-${widget.action.title}'),
-            width: 98,
+            key: ValueKey<String>('busqueda-react-tool-${action.title}'),
+            width: 98 * scale.clamp(1.0, 1.65),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
-              color: reactTheme.surface,
-              border: Border.all(color: reactTheme.border),
+              color: reactTheme.isDark ? const Color(0xFF191C25) : Colors.white,
+              border: Border.all(
+                color: reactTheme.isDark
+                    ? const Color(0xFF687386)
+                    : reactTheme.border,
+              ),
               boxShadow: reactTheme.isDark
                   ? null
                   : [
@@ -2264,19 +2061,21 @@ class _ToolDockItemReactState extends State<_ToolDockItemReact> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  widget.action.icon,
+                  action.icon,
                   color: reactTheme.isDark
                       ? const Color(0xFF85B8FF)
                       : const Color(0xFF0C66E4),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  widget.action.title.toLowerCase(),
+                  action.title.toLowerCase(),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: reactTheme.foreground(0.86),
+                    color: reactTheme.isDark
+                        ? const Color(0xFFF2F4FF)
+                        : reactTheme.text,
                     fontWeight: FontWeight.w700,
                     height: 1.05,
                   ),
@@ -2307,13 +2106,38 @@ class _SageCardNavReact extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final reactTheme = context.reactTheme;
+    final actionGrid = Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+      child: Column(
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const gap = 8.0;
+              final width = (constraints.maxWidth - gap) / 2;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  for (final action in actions)
+                    SizedBox(
+                      width: width,
+                      child: _SageActionReact(
+                        action: action,
+                        onTap: () => onTap(action),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
     return ReactGlassBlur(
       borderRadius: BorderRadius.circular(30),
       child: AnimatedContainer(
         key: const ValueKey<String>('busqueda-react-sage-card'),
-        duration: reduceMotion
-            ? Duration.zero
-            : const Duration(milliseconds: 260),
+        duration: reduceMotion ? Duration.zero : MovimientoApp.respuesta,
         curve: Curves.easeOutCubic,
         padding: const EdgeInsets.all(1.2),
         decoration: BoxDecoration(
@@ -2375,7 +2199,7 @@ class _SageCardNavReact extends StatelessWidget {
                       AnimatedRotation(
                         duration: reduceMotion
                             ? Duration.zero
-                            : const Duration(milliseconds: 220),
+                            : MovimientoApp.respuesta,
                         turns: expanded ? 0.125 : 0,
                         child: Icon(Icons.add_rounded, color: reactTheme.text),
                       ),
@@ -2383,42 +2207,19 @@ class _SageCardNavReact extends StatelessWidget {
                   ),
                 ),
               ),
-              AnimatedCrossFade(
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 250),
-                crossFadeState: expanded
-                    ? CrossFadeState.showSecond
-                    : CrossFadeState.showFirst,
-                firstChild: const SizedBox(width: double.infinity, height: 0),
-                secondChild: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
-                  child: Column(
-                    children: [
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          const gap = 8.0;
-                          final width = (constraints.maxWidth - gap) / 2;
-                          return Wrap(
-                            spacing: gap,
-                            runSpacing: gap,
-                            children: [
-                              for (final action in actions)
-                                SizedBox(
-                                  width: width,
-                                  child: _SageActionReact(
-                                    action: action,
-                                    onTap: () => onTap(action),
-                                  ),
-                                ),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
-                  ),
+              if (reduceMotion)
+                expanded
+                    ? actionGrid
+                    : const SizedBox(width: double.infinity, height: 0)
+              else
+                AnimatedCrossFade(
+                  duration: MovimientoApp.respuesta,
+                  crossFadeState: expanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  firstChild: const SizedBox(width: double.infinity, height: 0),
+                  secondChild: actionGrid,
                 ),
-              ),
             ],
           ),
         ),
@@ -2534,6 +2335,84 @@ class _SageActionReact extends StatelessWidget {
   }
 }
 
+TextStyle _tituloInstitucionReact(BuildContext context) =>
+    temaHerramientasApp(context).textTheme.titleLarge!.copyWith(
+      fontSize: 20,
+      fontWeight: FontWeight.w800,
+      letterSpacing: -0.4,
+      height: 1.15,
+    );
+
+double _altoTextoInstitucionReact(
+  BuildContext context,
+  String texto,
+  TextStyle estilo,
+  double ancho, {
+  int maxLines = 3,
+}) {
+  final painter = TextPainter(
+    text: TextSpan(text: texto, style: estilo),
+    textScaler: MediaQuery.textScalerOf(context),
+    textDirection: Directionality.of(context),
+    maxLines: maxLines,
+  )..layout(maxWidth: math.max(1, ancho));
+  final height = painter.height.ceilToDouble();
+  painter.dispose();
+  return height;
+}
+
+double _alturaAccionInstitucionReact(BuildContext context, double ancho) {
+  final style = temaHerramientasApp(
+    context,
+  ).textTheme.labelMedium!.copyWith(fontSize: 13, fontWeight: FontWeight.w700);
+  final texto = _altoTextoInstitucionReact(
+    context,
+    'calendario',
+    style,
+    (ancho - 10) / 2 - 48,
+    maxLines: 2,
+  );
+  return math.max(48, texto + 20);
+}
+
+double _alturaCarruselInstitucionesReact(
+  BuildContext context,
+  double fraccionPagina,
+  List<CareerInfo> careers,
+) {
+  final theme = temaHerramientasApp(context);
+  final ancho = math.max(
+    1.0,
+    MediaQuery.sizeOf(context).width * fraccionPagina - 50,
+  );
+  var contenido = 0.0;
+  for (final career in careers) {
+    final title = _altoTextoInstitucionReact(
+      context,
+      career.nombre,
+      _tituloInstitucionReact(context),
+      ancho - 64,
+    );
+    final institutions = kInstitutions.where(
+      (item) => !item.hidden && item.careerId == career.id,
+    );
+    final subtitle = _altoTextoInstitucionReact(
+      context,
+      institutions.isEmpty
+          ? 'Institución sin asignar'
+          : institutions.map((item) => item.nombre).join(' · '),
+      theme.textTheme.bodySmall!.copyWith(height: 1.35),
+      ancho,
+    );
+    contenido = math.max(contenido, math.max(52, title) + 12 + subtitle);
+  }
+  return 50 +
+      contenido +
+      18 +
+      2 * _alturaAccionInstitucionReact(context, ancho) +
+      10;
+}
+
 class _CareerDepthCarouselReact extends StatelessWidget {
   const _CareerDepthCarouselReact({
     required this.controller,
@@ -2551,7 +2430,11 @@ class _CareerDepthCarouselReact extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       key: const ValueKey<String>('busqueda-react-career-carousel'),
-      height: 218,
+      height: _alturaCarruselInstitucionesReact(
+        context,
+        controller.viewportFraction,
+        careers,
+      ),
       child: PageView.builder(
         controller: controller,
         itemCount: careers.length,
@@ -2572,11 +2455,13 @@ class _CareerDepthCarouselReact extends StatelessWidget {
                   controller.position.hasContentDimensions) {
                 page = controller.page ?? controller.initialPage.toDouble();
               }
-              final delta = (page - index).abs().clamp(0.0, 1.0);
-              final scale = 1 - delta * 0.08;
+              final delta = MediaQuery.disableAnimationsOf(context)
+                  ? 0.0
+                  : (page - index).abs().clamp(0.0, 1.0);
+              final scale = 1 - delta * 0.04;
               return Transform.scale(
                 scale: scale,
-                child: Opacity(opacity: 1 - delta * 0.34, child: child),
+                child: Opacity(opacity: 1 - delta * 0.16, child: child),
               );
             },
             child: Padding(
@@ -2606,136 +2491,209 @@ class _CareerDepthCardReact extends StatelessWidget {
   final Future<void> Function(DestinoBusquedaAtlassian destination) onOpen;
 
   @override
-  Widget build(BuildContext context) {
-    final accent = _careerAccent(career.id);
-    final reactTheme = context.reactTheme;
-    final watermarkAsset = _careerWatermarkAsset(career);
-    return ReactGlassBlur(
-      borderRadius: BorderRadius.circular(30),
-      child: Container(
+  Widget build(BuildContext context) => TemaHerramientasApp(
+    builder: (context) {
+      final scheme = Theme.of(context).colorScheme;
+      final dark = Theme.of(context).brightness == Brightness.dark;
+      final accent = _careerAccent(career.id);
+      final logo = _careerWatermarkAsset(career);
+      final acciones = [
+        (
+          'plan',
+          Icons.account_tree_rounded,
+          DestinoBusquedaAtlassian(
+            tipo: TipoDestinoBusquedaAtlassian.seccion,
+            seccion: 2,
+            careerId: career.id,
+          ),
+        ),
+        (
+          'mesas',
+          Icons.event_note_rounded,
+          DestinoBusquedaAtlassian(
+            tipo: TipoDestinoBusquedaAtlassian.seccion,
+            seccion: 1,
+            careerId: career.id,
+          ),
+        ),
+        (
+          'calendario',
+          Icons.calendar_month_rounded,
+          DestinoBusquedaAtlassian(
+            tipo: TipoDestinoBusquedaAtlassian.calendario,
+            careerId: career.id,
+          ),
+        ),
+        (
+          'diseños',
+          Icons.auto_stories_rounded,
+          DestinoBusquedaAtlassian(
+            tipo: TipoDestinoBusquedaAtlassian.disenos,
+            careerId: career.id,
+          ),
+        ),
+      ];
+      return Container(
         key: ValueKey<String>('busqueda-react-career-${career.id}'),
-        clipBehavior: Clip.antiAlias,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
+          borderRadius: BorderRadius.circular(24),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: reactTheme.accentGradient(accent),
-          ),
-          border: Border.all(
-            color: accent.withValues(alpha: reactTheme.isDark ? 0.50 : 0.60),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withValues(alpha: reactTheme.isDark ? 0.18 : 0.08),
-              blurRadius: 24,
-              spreadRadius: -8,
-              offset: const Offset(0, 14),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            if (watermarkAsset != null)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: Align(
-                    alignment: Alignment.bottomRight,
-                    child: Opacity(
-                      opacity: reactTheme.isDark ? 0.14 : 0.10,
-                      child: Transform.translate(
-                        offset: const Offset(18, 18),
-                        child: Image.asset(
-                          watermarkAsset,
-                          width: 230,
-                          height: 230,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+            colors: [
+              Color.alphaBlend(
+                accent.withValues(alpha: dark ? 0.12 : 0.07),
+                scheme.surface,
               ),
-            Column(
+              scheme.surface,
+            ],
+          ),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  career.nombre,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: reactTheme.text,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                    height: 1.05,
+                Container(
+                  width: 52,
+                  height: 52,
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F7FA),
+                    borderRadius: BorderRadius.circular(16),
                   ),
+                  child: logo == null
+                      ? const Icon(
+                          Icons.school_outlined,
+                          color: Color(0xFF173D8F),
+                        )
+                      : Image.asset(
+                          logo,
+                          fit: BoxFit.contain,
+                          cacheWidth:
+                              (52 * MediaQuery.devicePixelRatioOf(context))
+                                  .ceil(),
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.school_outlined,
+                            color: Color(0xFF173D8F),
+                          ),
+                        ),
                 ),
-                if (institutions.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3, right: 72),
-                    child: Text(
-                      institutions.map((item) => item.nombre).join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: reactTheme.muted(0.82),
-                      ),
-                    ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    career.nombre,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: _tituloInstitucionReact(context),
                   ),
-                const Spacer(),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    _MiniGlassActionReact(
-                      label: 'plan',
-                      icon: Icons.account_tree_rounded,
-                      onTap: () => onOpen(
-                        DestinoBusquedaAtlassian(
-                          tipo: TipoDestinoBusquedaAtlassian.seccion,
-                          seccion: 2,
-                          careerId: career.id,
-                        ),
-                      ),
-                    ),
-                    _MiniGlassActionReact(
-                      label: 'mesas',
-                      icon: Icons.event_note_rounded,
-                      onTap: () => onOpen(
-                        DestinoBusquedaAtlassian(
-                          tipo: TipoDestinoBusquedaAtlassian.seccion,
-                          seccion: 1,
-                          careerId: career.id,
-                        ),
-                      ),
-                    ),
-                    _MiniGlassActionReact(
-                      label: 'calendario',
-                      icon: Icons.calendar_month_rounded,
-                      onTap: () => onOpen(
-                        DestinoBusquedaAtlassian(
-                          tipo: TipoDestinoBusquedaAtlassian.calendario,
-                          careerId: career.id,
-                        ),
-                      ),
-                    ),
-                    _MiniGlassActionReact(
-                      label: 'diseños',
-                      icon: Icons.auto_stories_rounded,
-                      onTap: () => onOpen(
-                        DestinoBusquedaAtlassian(
-                          tipo: TipoDestinoBusquedaAtlassian.disenos,
-                          careerId: career.id,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Text(
+              institutions.isEmpty
+                  ? 'Institución sin asignar'
+                  : institutions.map((item) => item.nombre).join(' · '),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(height: 1.35),
+            ),
+            const Spacer(),
+            const SizedBox(height: 18),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final height = _alturaAccionInstitucionReact(
+                  context,
+                  constraints.maxWidth,
+                );
+                return Column(
+                  children: [
+                    for (var fila = 0; fila < 2; fila++) ...[
+                      if (fila > 0) const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          for (var columna = 0; columna < 2; columna++) ...[
+                            if (columna > 0) const SizedBox(width: 10),
+                            Expanded(
+                              child: SizedBox(
+                                height: height,
+                                child: _AccionInstitucionReact(
+                                  key: ValueKey(
+                                    'busqueda-react-career-${career.id}-${acciones[fila * 2 + columna].$1}',
+                                  ),
+                                  label: acciones[fila * 2 + columna].$1,
+                                  icon: acciones[fila * 2 + columna].$2,
+                                  onTap: () =>
+                                      onOpen(acciones[fila * 2 + columna].$3),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
           ],
+        ),
+      );
+    },
+  );
+}
+
+class _AccionInstitucionReact extends StatelessWidget {
+  const _AccionInstitucionReact({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ToqueMovimientoApp(
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: scheme.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: scheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: scheme.onSurface,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -2983,7 +2941,7 @@ class _GooeyFilterReact extends StatelessWidget {
               child: AnimatedContainer(
                 duration: MediaQuery.disableAnimationsOf(context)
                     ? Duration.zero
-                    : const Duration(milliseconds: 220),
+                    : MovimientoApp.respuesta,
                 curve: Curves.easeOutCubic,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 13,
@@ -3141,9 +3099,7 @@ class _SpotlightBestMatchReactState extends State<_SpotlightBestMatchReact> {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final reactTheme = context.reactTheme;
     return AnimatedScale(
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 160),
+      duration: reduceMotion ? Duration.zero : MovimientoApp.respuesta,
       scale: _pressed ? 0.985 : 1,
       child: Material(
         color: Colors.transparent,
@@ -3248,25 +3204,8 @@ class _StaggeredRevealReact extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final capped = index.clamp(0, 7).toInt();
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0, end: 1),
-      duration: reduceMotion
-          ? Duration.zero
-          : Duration(milliseconds: 190 + capped * 28),
-      curve: Curves.easeOutCubic,
-      builder: (context, progress, child) => Opacity(
-        opacity: progress,
-        child: Transform.translate(
-          offset: Offset(0, 12 * (1 - progress)),
-          child: child,
-        ),
-      ),
-      child: child,
-    );
-  }
+  Widget build(BuildContext context) =>
+      EntradaContenidoApp(orden: index, child: child);
 }
 
 class _ActionResultReact extends StatelessWidget {
@@ -3755,9 +3694,7 @@ class _GlassResultShellReactState extends State<_GlassResultShellReact> {
     final content = ReactGlassBlur(
       borderRadius: BorderRadius.circular(24),
       child: AnimatedContainer(
-        duration: reduceMotion
-            ? Duration.zero
-            : const Duration(milliseconds: 150),
+        duration: reduceMotion ? Duration.zero : MovimientoApp.respuesta,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
@@ -3775,9 +3712,7 @@ class _GlassResultShellReactState extends State<_GlassResultShellReact> {
     );
     if (widget.onTap == null) return content;
     return AnimatedScale(
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 150),
+      duration: reduceMotion ? Duration.zero : MovimientoApp.respuesta,
       scale: _pressed ? 0.987 : 1,
       child: Material(
         color: Colors.transparent,

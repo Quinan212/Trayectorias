@@ -117,3 +117,37 @@ LOGS_SANITIZADOS_SAGE_V3.md
 /mod-packages/
 /tessdata/
 .opencode
+
+# Credenciales y firma locales
+/SAGE-acceso-local.md
+**/key.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+
+# Entornos y caches regenerables
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+*.lcov
+
+# Instaladores y simbolos generados
+*.exe
+*.ipa
+*.dmg
+*.appx
+*.appxbundle
+*.msixbundle
+*.pdb
+*.dmp
+
+# Clave de firma incluida por solicitud del propietario
+!/android/app/upload-keystore.jks

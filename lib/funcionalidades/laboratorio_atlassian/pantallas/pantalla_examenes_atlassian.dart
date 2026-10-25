@@ -8,14 +8,93 @@ import 'package:skeletonizer/skeletonizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../compartido/movimiento/movimiento_app.dart';
+import '../../../compartido/tema/tema_herramientas_app.dart';
 import '../../administrador/datos/repositorio_eventos_examen_administrador.dart';
 import '../../administrador/proveedores/proveedores_acceso_administrador.dart';
-import '../../examenes/datos/repositorio_examenes.dart';
 import '../../examenes/modelos/evento_examen.dart';
+import '../../examenes/proveedores/proveedores_examenes.dart';
 import '../busqueda/modelos_busqueda_atlassian.dart';
+import '../componentes/componentes_academicos_app.dart';
 import '../componentes/componentes_atlassian.dart';
 import '../tema/tema_atlassian.dart';
 import 'utilidades_atlassian.dart';
+
+double _espacioInferiorExamenes(BuildContext context) {
+  final size = MediaQuery.sizeOf(context);
+  return size.width >= 720 || size.width > size.height ? 24 : 128;
+}
+
+class _FiltroInstanciaExamenes extends StatelessWidget {
+  const _FiltroInstanciaExamenes({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final duration = MovimientoApp.duracion(context, MovimientoApp.respuesta);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        for (final option in const [
+          ('todos', 'Todos', Icons.list_alt_rounded),
+          ('llamados', 'Llamados', Icons.event_note_rounded),
+          ('coloquios', 'Coloquios', Icons.forum_outlined),
+        ])
+          ToqueMovimientoApp(
+            child: ChoiceChip(
+              selected: value == option.$1,
+              showCheckmark: false,
+              avatar: Icon(
+                option.$3,
+                size: 18,
+                color: value == option.$1
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurfaceVariant,
+              ),
+              label: Text(option.$2),
+              labelStyle: TextStyle(
+                color: value == option.$1
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+              backgroundColor: scheme.surfaceContainerLow,
+              selectedColor: scheme.primaryContainer,
+              side: BorderSide(
+                color: value == option.$1
+                    ? scheme.primary
+                    : scheme.outlineVariant,
+                width: 1.5,
+              ),
+              materialTapTargetSize: MaterialTapTargetSize.padded,
+              chipAnimationStyle: ChipAnimationStyle(
+                enableAnimation: AnimationStyle(
+                  duration: duration,
+                  reverseDuration: duration,
+                ),
+                selectAnimation: AnimationStyle(
+                  duration: duration,
+                  reverseDuration: duration,
+                ),
+              ),
+              onSelected: (_) {
+                if (value == option.$1) return;
+                HapticFeedback.selectionClick();
+                onChanged(option.$1);
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
 
 class PantallaExamenesAtlassian extends ConsumerStatefulWidget {
   const PantallaExamenesAtlassian({
@@ -34,14 +113,10 @@ class PantallaExamenesAtlassian extends ConsumerStatefulWidget {
 
 class _PantallaExamenesAtlassianState
     extends ConsumerState<PantallaExamenesAtlassian> {
-  static const _repository = RepositorioExamenes();
   static const _adminRepository = RepositorioEventosExamenAdministrador();
 
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  late Future<List<EventoExamen>> _future;
-  RealtimeChannel? _realtimeChannel;
-  Timer? _realtimeRefreshDebounce;
   String _careerId = 'historia';
   String _scope = 'todos';
   int? _year;
@@ -51,8 +126,6 @@ class _PantallaExamenesAtlassianState
   @override
   void initState() {
     super.initState();
-    _future = _load();
-    _subscribeRealtime();
     widget.requestListenable.addListener(_applyExternalRequest);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _applyExternalRequest(),
@@ -86,86 +159,19 @@ class _PantallaExamenesAtlassianState
         );
       }
     });
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-      );
-    }
+    MovimientoApp.volverAlInicio(context, _scrollController);
   }
 
   @override
   void dispose() {
     widget.requestListenable.removeListener(_applyExternalRequest);
-    _realtimeRefreshDebounce?.cancel();
-    final channel = _realtimeChannel;
-    if (channel != null) {
-      unawaited(
-        Supabase.instance.client.removeChannel(channel).then<void>((_) {}),
-      );
-    }
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _subscribeRealtime() {
-    _realtimeChannel = Supabase.instance.client
-        .channel('exam-events-atlassian-list')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'exam_events',
-          callback: (_) => _scheduleRealtimeRefresh(),
-        )
-        .subscribe();
-  }
-
-  void _scheduleRealtimeRefresh() {
-    _realtimeRefreshDebounce?.cancel();
-    _realtimeRefreshDebounce = Timer(const Duration(milliseconds: 250), () {
-      if (mounted) unawaited(_refresh());
-    });
-  }
-
-  Future<List<EventoExamen>> _load() async {
-    final results = await Future.wait<List<EventoExamen>>([
-      _repository.loadJulioLlamado1(),
-      _repository.loadJulioLlamado2(),
-      _repository.loadJulioColoquios(),
-      _repository.loadLlamado1(),
-      _repository.loadLlamado2(),
-      _repository.loadColoquios(),
-    ]);
-    final all = <EventoExamen>[
-      ...results[0],
-      ...results[1],
-      ...results[2],
-      ...results[3],
-      ...results[4],
-      ...results[5],
-    ];
-    all.removeWhere((e) => e.legacy);
-    all.sort((first, second) {
-      final firstDate = first.fechaHora;
-      final secondDate = second.fechaHora;
-      if (firstDate == null && secondDate == null) {
-        return first.materia.compareTo(second.materia);
-      }
-      if (firstDate == null) return 1;
-      if (secondDate == null) return -1;
-      return firstDate.compareTo(secondDate);
-    });
-    return List<EventoExamen>.unmodifiable(all);
-  }
-
   Future<void> _refresh() async {
-    final next = _load();
-    setState(() {
-      _future = next;
-    });
-    await next;
+    await ref.refresh(proveedorTodosLosExamenes.future).then<void>((_) {});
   }
 
   List<EventoExamen> _filter(List<EventoExamen> source) {
@@ -199,51 +205,57 @@ class _PantallaExamenesAtlassianState
       ('politica', 'Ciencia Política'),
       ('artes_visuales', 'Artes Visuales'),
       ('musica', 'Música'),
+      ('fisica', 'Educación Física'),
     ];
-    final selected = await mostrarHojaAtlassian<String>(
+    final selected = await mostrarHojaAcademicaAtlassian<String>(
       context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Seleccionar carrera',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              for (final career in careers) ...[
-                PanelAtlassian(
-                  selected: _careerId == career.$1,
-                  onTap: () => Navigator.of(sheetContext).pop(career.$1),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _careerId == career.$1
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_off_rounded,
-                        color: _careerId == career.$1
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        career.$2,
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                    ],
-                  ),
+      builder: (sheetContext) => SingleChildScrollView(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Seleccionar carrera',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+                for (final career in careers) ...[
+                  PanelAtlassian(
+                    selected: _careerId == career.$1,
+                    onTap: () => Navigator.of(sheetContext).pop(career.$1),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _careerId == career.$1
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_off_rounded,
+                          color: _careerId == career.$1
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            career.$2,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
     if (selected == null || !mounted) return;
+    if (selected == _careerId) return;
     setState(() {
       _careerId = selected;
       _year = null;
@@ -251,41 +263,45 @@ class _PantallaExamenesAtlassianState
   }
 
   Future<void> _chooseYear(List<int> years) async {
-    final selected = await mostrarHojaAtlassian<String>(
+    final selected = await mostrarHojaAcademicaAtlassian<String>(
       context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Filtrar por año',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              PanelAtlassian(
-                selected: _year == null,
-                onTap: () => Navigator.of(sheetContext).pop('todos'),
-                child: const Text('Todos los años'),
-              ),
-              const SizedBox(height: 8),
-              for (final year in years) ...[
+      builder: (sheetContext) => SingleChildScrollView(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Filtrar por año',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
                 PanelAtlassian(
-                  selected: _year == year,
-                  onTap: () => Navigator.of(sheetContext).pop('$year'),
-                  child: Text('$year° año'),
+                  selected: _year == null,
+                  onTap: () => Navigator.of(sheetContext).pop('todos'),
+                  child: const Text('Todos los años'),
                 ),
                 const SizedBox(height: 8),
+                for (final year in years) ...[
+                  PanelAtlassian(
+                    selected: _year == year,
+                    onTap: () => Navigator.of(sheetContext).pop('$year'),
+                    child: Text('$year° año'),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
     if (selected == null || !mounted) return;
-    setState(() => _year = selected == 'todos' ? null : int.parse(selected));
+    final year = selected == 'todos' ? null : int.parse(selected);
+    if (year == _year) return;
+    setState(() => _year = year);
   }
 
   void _resetFilters() {
@@ -320,11 +336,12 @@ class _PantallaExamenesAtlassianState
     );
     if (!mounted || !access.isAdmin) return;
 
-    final result = await mostrarHojaAtlassian<_ResultadoControlRapidoExamen>(
-      context: context,
-      builder: (sheetContext) =>
-          _HojaControlRapidoExamenAtlassian(event: event),
-    );
+    final result =
+        await mostrarHojaAcademicaAtlassian<_ResultadoControlRapidoExamen>(
+          context: context,
+          builder: (sheetContext) =>
+              _HojaControlRapidoExamenAtlassian(event: event),
+        );
     if (result == null || !mounted) return;
 
     setState(() => _savingQuickControl = true);
@@ -354,180 +371,233 @@ class _PantallaExamenesAtlassianState
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      TemaHerramientasApp(builder: _contenido);
+
+  Widget _contenido(BuildContext context) {
+    final examsFuture = ref.watch(proveedorTodosLosExamenes.future);
     final adminAccess = ref
         .watch(proveedorEstadoDispositivoAdministrador)
         .asData
         ?.value;
     final isAdmin = adminAccess?.isAdmin == true;
-    final headerHeight = MediaQuery.paddingOf(context).top + 72;
-    final header = EncabezadoSeccionAtlassianColapsable(
-      scrollController: _scrollController,
-      title: 'Exámenes',
-      subtitle: 'Mesas, llamados y coloquios',
-      actions: [
-        BotonIconoAtlassian(
-          icon: Icons.refresh_rounded,
-          tooltip: 'Actualizar',
-          onPressed: () => unawaited(_refresh()),
-        ),
-      ],
-    );
+    final theme = Theme.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    final titleStyle = theme.textTheme.headlineSmall;
+    final subtitleStyle = theme.textTheme.bodySmall;
+    final textHeight =
+        (scaler.scale(titleStyle?.fontSize ?? 24) * (titleStyle?.height ?? 1.3))
+            .ceilToDouble() +
+        2 +
+        (scaler.scale(subtitleStyle?.fontSize ?? 12) *
+                (subtitleStyle?.height ?? 1.3))
+            .ceilToDouble();
+    final contentHeight = textHeight + 16 <= 72 ? 72.0 : textHeight + 24;
+    final headerHeight = MediaQuery.paddingOf(context).top + contentHeight;
+    final actions = [
+      BotonIconoAtlassian(
+        icon: Icons.refresh_rounded,
+        tooltip: 'Actualizar',
+        onPressed: () => unawaited(_refresh()),
+      ),
+    ];
+    final header = contentHeight > 72
+        ? EncabezadoPaginaAtlassian(
+            title: 'Exámenes',
+            subtitle: 'Mesas, llamados y coloquios',
+            centerTitle: true,
+            actions: actions,
+          )
+        : EncabezadoSeccionAtlassianColapsable(
+            scrollController: _scrollController,
+            title: 'Exámenes',
+            subtitle: 'Mesas, llamados y coloquios',
+            actions: actions,
+          );
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: FutureBuilder<List<EventoExamen>>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return Skeletonizer(
-                    enabled: true,
+      body: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 8),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: FutureBuilder<List<EventoExamen>>(
+                future: examsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return Skeletonizer(
+                      enabled: true,
+                      child: ListView(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          headerHeight + 16,
+                          16,
+                          _espacioInferiorExamenes(context),
+                        ),
+                        children: [
+                          _FiltrosExamenesAtlassian(
+                            careerId: _careerId,
+                            scope: _scope,
+                            year: _year,
+                            years: const [1, 2, 3, 4],
+                            searchController: _searchController,
+                            onChooseCareer: () {},
+                            onChooseYear: () {},
+                            onScopeChanged: (_) {},
+                            onSearchChanged: (_) {},
+                            onClearSearch: () {},
+                            onResetFilters: () {},
+                          ),
+                          const SizedBox(height: 16),
+                          const _EsqueletoExamenesAtlassian(),
+                        ],
+                      ),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          top: headerHeight,
+                          bottom: _espacioInferiorExamenes(context),
+                        ),
+                        child: EstadoVacioAtlassian(
+                          icon: Icons.error_outline_rounded,
+                          title: 'No se pudieron cargar los exámenes',
+                          message: snapshot.error.toString(),
+                          action: BotonAtlassian(
+                            label: 'Reintentar',
+                            icon: Icons.refresh_rounded,
+                            primary: true,
+                            onPressed: () => unawaited(_refresh()),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  final all = snapshot.data ?? const <EventoExamen>[];
+                  final filtered = _filter(all);
+                  final years =
+                      all
+                          .where((event) => event.careerId == _careerId)
+                          .map((event) => event.anio)
+                          .whereType<int>()
+                          .toSet()
+                          .toList()
+                        ..sort();
+                  final grouped = _group(filtered);
+
+                  return RefreshIndicator(
+                    onRefresh: _refresh,
                     child: ListView(
                       controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       padding: EdgeInsets.fromLTRB(
                         16,
                         headerHeight + 16,
                         16,
-                        140 + MediaQuery.paddingOf(context).bottom,
+                        _espacioInferiorExamenes(context),
                       ),
                       children: [
                         _FiltrosExamenesAtlassian(
                           careerId: _careerId,
                           scope: _scope,
                           year: _year,
-                          years: const [1, 2, 3, 4],
+                          years: years,
                           searchController: _searchController,
-                          onChooseCareer: () {},
-                          onChooseYear: () {},
-                          onScopeChanged: (_) {},
-                          onSearchChanged: (_) {},
-                          onClearSearch: () {},
-                          onResetFilters: () {},
+                          onChooseCareer: _chooseCareer,
+                          onChooseYear: () => _chooseYear(years),
+                          onScopeChanged: (value) {
+                            setState(() => _scope = value);
+                          },
+                          onSearchChanged: (value) {
+                            setState(() => _query = value);
+                          },
+                          onClearSearch: _clearSearch,
+                          onResetFilters: _resetFilters,
                         ),
                         const SizedBox(height: 16),
-                        const _EsqueletoExamenesAtlassian(),
+                        _ResumenExamenesAtlassian(events: filtered),
+                        const SizedBox(height: 20),
+                        if (filtered.isEmpty)
+                          const EstadoVacioAtlassian(
+                            icon: Icons.event_busy_rounded,
+                            title: 'Sin resultados',
+                            message: 'Revisá la carrera, el año o los filtros.',
+                          )
+                        else
+                          for (final entry in grouped.entries) ...[
+                            SeparadorTituloAtlassian(
+                              title: entry.key,
+                              subtitle: '${entry.value.length} registros',
+                            ),
+                            const SizedBox(height: 8),
+                            PanelAtlassian(
+                              key: ValueKey((
+                                _careerId,
+                                _scope,
+                                _year,
+                                entry.key,
+                              )),
+                              ordenEntrada: 1,
+                              radius: 18,
+                              padding: EdgeInsets.zero,
+                              child: Column(
+                                children: [
+                                  for (
+                                    var index = 0;
+                                    index < entry.value.length;
+                                    index++
+                                  ) ...[
+                                    _FilaExamenAtlassian(
+                                      key: ValueKey(
+                                        entry.value[index].id ??
+                                            entry.value[index].materia,
+                                      ),
+                                      event: entry.value[index],
+                                      onTap: () =>
+                                          _openDetail(entry.value[index]),
+                                      onLongPress:
+                                          isAdmin && !_savingQuickControl
+                                          ? () => unawaited(
+                                              _openQuickControlSheet(
+                                                entry.value[index],
+                                              ),
+                                            )
+                                          : null,
+                                    ),
+                                    if (index != entry.value.length - 1)
+                                      const Divider(height: 1),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+                        const SizedBox(height: 48),
                       ],
                     ),
                   );
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: EdgeInsets.only(top: headerHeight),
-                      child: EstadoVacioAtlassian(
-                        icon: Icons.error_outline_rounded,
-                        title: 'No se pudieron cargar los exámenes',
-                        message: snapshot.error.toString(),
-                        action: BotonAtlassian(
-                          label: 'Reintentar',
-                          icon: Icons.refresh_rounded,
-                          primary: true,
-                          onPressed: () => unawaited(_refresh()),
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
-                final all = snapshot.data ?? const <EventoExamen>[];
-                final filtered = _filter(all);
-                final years =
-                    all
-                        .where((event) => event.careerId == _careerId)
-                        .map((event) => event.anio)
-                        .whereType<int>()
-                        .toSet()
-                        .toList()
-                      ..sort();
-                final grouped = _group(filtered);
-
-                return RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: ListView(
-                    controller: _scrollController,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      headerHeight + 16,
-                      16,
-                      140 + MediaQuery.paddingOf(context).bottom,
-                    ),
-                    children: [
-                      _FiltrosExamenesAtlassian(
-                        careerId: _careerId,
-                        scope: _scope,
-                        year: _year,
-                        years: years,
-                        searchController: _searchController,
-                        onChooseCareer: _chooseCareer,
-                        onChooseYear: () => _chooseYear(years),
-                        onScopeChanged: (value) {
-                          setState(() => _scope = value);
-                        },
-                        onSearchChanged: (value) {
-                          setState(() => _query = value);
-                        },
-                        onClearSearch: _clearSearch,
-                        onResetFilters: _resetFilters,
-                      ),
-                      const SizedBox(height: 16),
-                      _ResumenExamenesAtlassian(events: filtered),
-                      const SizedBox(height: 20),
-                      if (filtered.isEmpty)
-                        const EstadoVacioAtlassian(
-                          icon: Icons.event_busy_rounded,
-                          title: 'Sin resultados',
-                          message: 'Revisá la carrera, el año o los filtros.',
-                        )
-                      else
-                        for (final entry in grouped.entries) ...[
-                          SeparadorTituloAtlassian(
-                            title: entry.key,
-                            subtitle: '${entry.value.length} registros',
-                          ),
-                          const SizedBox(height: 8),
-                          PanelAtlassian(
-                            padding: EdgeInsets.zero,
-                            child: Column(
-                              children: [
-                                for (
-                                  var index = 0;
-                                  index < entry.value.length;
-                                  index++
-                                ) ...[
-                                  _FilaExamenAtlassian(
-                                    event: entry.value[index],
-                                    onTap: () =>
-                                        _openDetail(entry.value[index]),
-                                    onLongPress: isAdmin && !_savingQuickControl
-                                        ? () => unawaited(
-                                            _openQuickControlSheet(
-                                              entry.value[index],
-                                            ),
-                                          )
-                                        : null,
-                                  ),
-                                  if (index != entry.value.length - 1)
-                                    const Divider(height: 1),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-                      const SizedBox(height: 48),
-                    ],
-                  ),
-                );
-              },
+                },
+              ),
             ),
-          ),
-          Align(alignment: Alignment.topCenter, child: header),
-        ],
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SizedBox(height: headerHeight, child: header),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -572,6 +642,9 @@ class _FiltrosExamenesAtlassian extends StatelessWidget {
   String get _careerLabel => switch (careerId) {
     'geografia' => 'Geografía',
     'politica' => 'Ciencia Política',
+    'artes_visuales' => 'Artes Visuales',
+    'musica' => 'Música',
+    'fisica' => 'Educación Física',
     _ => 'Historia',
   };
 
@@ -585,13 +658,15 @@ class _FiltrosExamenesAtlassian extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
             children: [
-              Expanded(
-                child: Text(
-                  'Buscar y filtrar',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+              Text(
+                'Buscar y filtrar',
+                style: Theme.of(context).textTheme.titleMedium,
               ),
               if (active > 0)
                 TextButton.icon(
@@ -611,18 +686,23 @@ class _FiltrosExamenesAtlassian extends StatelessWidget {
           const SizedBox(height: 10),
           LayoutBuilder(
             builder: (context, constraints) {
-              final career = SelectorAtlassian(
-                label: 'Carrera',
-                value: _careerLabel,
-                icon: Icons.school_outlined,
-                onTap: onChooseCareer,
+              final career = ToqueMovimientoApp(
+                child: SelectorAtlassian(
+                  label: 'Carrera',
+                  value: _careerLabel,
+                  icon: Icons.school_outlined,
+                  onTap: onChooseCareer,
+                ),
               );
-              final yearField = SelectorAtlassian(
-                label: 'Año',
-                value: year == null ? 'Todos' : '$year° año',
-                icon: Icons.calendar_view_month_outlined,
-                onTap: years.isEmpty ? null : onChooseYear,
-                enabled: years.isNotEmpty,
+              final yearField = ToqueMovimientoApp(
+                habilitado: years.isNotEmpty,
+                child: SelectorAtlassian(
+                  label: 'Año',
+                  value: year == null ? 'Todos' : '$year° año',
+                  icon: Icons.calendar_view_month_outlined,
+                  onTap: years.isEmpty ? null : onChooseYear,
+                  enabled: years.isNotEmpty,
+                ),
               );
               if (constraints.maxWidth >= 620) {
                 return Row(
@@ -639,23 +719,7 @@ class _FiltrosExamenesAtlassian extends StatelessWidget {
             },
           ),
           const SizedBox(height: 10),
-          ControlSegmentadoAtlassian<String>(
-            value: scope,
-            segments: const [
-              SegmentoAtlassian(value: 'todos', label: 'Todos'),
-              SegmentoAtlassian(
-                value: 'llamados',
-                label: 'Llamados',
-                icon: Icons.event_note_outlined,
-              ),
-              SegmentoAtlassian(
-                value: 'coloquios',
-                label: 'Coloquios',
-                icon: Icons.groups_2_outlined,
-              ),
-            ],
-            onChanged: onScopeChanged,
-          ),
+          _FiltroInstanciaExamenes(value: scope, onChanged: onScopeChanged),
         ],
       ),
     );
@@ -684,25 +748,25 @@ class _ResumenExamenesAtlassian extends StatelessWidget {
         final columns = constraints.maxWidth >= 720 ? 4 : 2;
         final width = (constraints.maxWidth - (columns - 1) * 10) / columns;
         final metrics = [
-          MetricaAtlassian(
+          MetricaAcademicaAtlassian(
             label: 'Registros',
             value: '${events.length}',
             icon: Icons.list_alt_rounded,
             appearance: AparienciaLozengeAtlassian.brand,
           ),
-          MetricaAtlassian(
+          MetricaAcademicaAtlassian(
             label: 'Próximos',
             value: '$upcoming',
             icon: Icons.upcoming_outlined,
             appearance: AparienciaLozengeAtlassian.success,
           ),
-          MetricaAtlassian(
+          MetricaAcademicaAtlassian(
             label: 'Coloquios',
             value: '$colloquiums',
             icon: Icons.forum_outlined,
             appearance: AparienciaLozengeAtlassian.discovery,
           ),
-          MetricaAtlassian(
+          MetricaAcademicaAtlassian(
             label: 'Con acta',
             value: '$withActa',
             icon: Icons.description_outlined,
@@ -723,6 +787,7 @@ class _ResumenExamenesAtlassian extends StatelessWidget {
 
 class _FilaExamenAtlassian extends StatelessWidget {
   const _FilaExamenAtlassian({
+    super.key,
     required this.event,
     required this.onTap,
     this.onLongPress,
@@ -738,141 +803,148 @@ class _FilaExamenAtlassian extends StatelessWidget {
     final hasStatus = event.mostrarAvisoEstado;
     final statusColor = _statusForeground(context, event.estado);
 
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: Container(
-        color: hasStatus ? _statusBackground(context, event.estado) : null,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: hasStatus
-                    ? _statusIconBackground(context, event.estado)
-                    : (future
-                          ? Theme.of(context).colorScheme.primaryContainer
-                          : Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest),
-                borderRadius: BorderRadius.circular(RadioAtlassian.medium),
+    return ToqueMovimientoApp(
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Container(
+          color: hasStatus ? _statusBackground(context, event.estado) : null,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: hasStatus
+                      ? _statusIconBackground(context, event.estado)
+                      : (future
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHighest),
+                  borderRadius: BorderRadius.circular(RadioAtlassian.medium),
+                ),
+                child: Icon(
+                  hasStatus
+                      ? _statusIcon(event.estado)
+                      : (future
+                            ? Icons.event_available_rounded
+                            : Icons.event_note_rounded),
+                  color: hasStatus
+                      ? statusColor
+                      : (future
+                            ? (Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white
+                                  : Theme.of(context).colorScheme.primary)
+                            : Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
               ),
-              child: Icon(
-                hasStatus
-                    ? _statusIcon(event.estado)
-                    : (future
-                          ? Icons.event_available_rounded
-                          : Icons.event_note_rounded),
-                color: hasStatus
-                    ? statusColor
-                    : (future
-                          ? (Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Theme.of(context).colorScheme.primary)
-                          : Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    event.materia,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 4),
-                  if (hasStatus) ...[
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline_rounded,
-                          size: 14,
-                          color: statusColor,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            event.mensajeEstadoEfectivo,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            softWrap: false,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: statusColor,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                  ],
-                  Text(
-                    formatoFechaHoraAtlassian(
-                      event.fechaVigente,
-                      event.horaVigente,
-                    ),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  if (event.docentes.isNotEmpty) ...[
-                    const SizedBox(height: 3),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      event.docentes.join(' · '),
-                      maxLines: 1,
+                      event.materia,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 4),
+                    if (hasStatus) ...[
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 14,
+                            color: statusColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              event.mensajeEstadoEfectivo,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                    ],
+                    Text(
+                      formatoFechaHoraAtlassian(
+                        event.fechaVigente,
+                        event.horaVigente,
+                      ),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (hasStatus)
-                  LozengeAtlassian(
-                    label: event.estado.etiqueta,
-                    appearance: _statusAppearance(event.estado),
-                  )
-                else
-                  LozengeAtlassian(
-                    label: _shortInstanceLabel(event.instancia),
-                    appearance: event.instancia == 'coloquio'
-                        ? AparienciaLozengeAtlassian.discovery
-                        : AparienciaLozengeAtlassian.brand,
-                  ),
-                const SizedBox(height: 6),
-                if (event.puedeAbrirActa) ...[
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.description_rounded,
-                        size: 13,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 3),
+                    if (event.docentes.isNotEmpty) ...[
+                      const SizedBox(height: 3),
                       Text(
-                        'Con acta',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        event.docentes.join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
-                  ),
-                ] else
-                  const Icon(Icons.chevron_right_rounded, size: 20),
-              ],
-            ),
-          ],
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (hasStatus)
+                          EtiquetaAcademicaAtlassian(
+                            label: event.estado.etiqueta,
+                            appearance: _statusAppearance(event.estado),
+                          )
+                        else
+                          EtiquetaAcademicaAtlassian(
+                            label: _shortInstanceLabel(event.instancia),
+                            appearance: event.instancia == 'coloquio'
+                                ? AparienciaLozengeAtlassian.discovery
+                                : AparienciaLozengeAtlassian.brand,
+                          ),
+                        if (event.puedeAbrirActa) ...[
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.description_rounded,
+                                size: 13,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                'Con acta',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded, size: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -891,62 +963,55 @@ class PantallaDetalleExamenAtlassian extends ConsumerStatefulWidget {
 
 class _PantallaDetalleExamenAtlassianState
     extends ConsumerState<PantallaDetalleExamenAtlassian> {
-  static const _repository = RepositorioExamenes();
   static const _adminRepository = RepositorioEventosExamenAdministrador();
 
   late EventoExamen _event;
-  RealtimeChannel? _realtimeChannel;
-  Timer? _reloadDebounce;
+  late final ProviderSubscription<AsyncValue<List<EventoExamen>>>
+  _eventsSubscription;
+  int _reloadRevision = 0;
   bool _savingDetails = false;
 
   @override
   void initState() {
     super.initState();
     _event = widget.event;
-    _subscribeRealtime();
+    _eventsSubscription = ref.listenManual(proveedorTodosLosExamenes, (
+      _,
+      next,
+    ) {
+      final events = next.asData?.value;
+      final id = _event.id?.trim() ?? '';
+      if (events == null || id.isEmpty) return;
+      final matches = events.where((event) => event.id == id);
+      if (matches.isEmpty) {
+        unawaited(_reloadCurrentEvent());
+      } else {
+        _reloadRevision++;
+        setState(() => _event = matches.first);
+      }
+    }, fireImmediately: true);
   }
 
   @override
   void dispose() {
-    _reloadDebounce?.cancel();
-    final channel = _realtimeChannel;
-    if (channel != null) {
-      unawaited(
-        Supabase.instance.client.removeChannel(channel).then<void>((_) {}),
-      );
-    }
+    _reloadRevision++;
+    _eventsSubscription.close();
     super.dispose();
-  }
-
-  void _subscribeRealtime() {
-    final id = _event.id?.trim() ?? '';
-    if (id.isEmpty) return;
-    _realtimeChannel = Supabase.instance.client
-        .channel('exam-event-detail-$id')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'exam_events',
-          callback: (payload) {
-            final changedId =
-                (payload.newRecord['id'] ?? payload.oldRecord['id'])
-                    ?.toString();
-            if (changedId != id) return;
-            _reloadDebounce?.cancel();
-            _reloadDebounce = Timer(
-              const Duration(milliseconds: 180),
-              () => unawaited(_reloadCurrentEvent()),
-            );
-          },
-        )
-        .subscribe();
   }
 
   Future<void> _reloadCurrentEvent() async {
     final id = _event.id?.trim() ?? '';
     if (id.isEmpty || !mounted) return;
-    final updated = await _repository.loadById(id);
-    if (!mounted) return;
+    final revision = ++_reloadRevision;
+    EventoExamen? updated;
+    try {
+      updated = await ref.read(proveedorRepositorioExamenes).loadById(id);
+    } catch (error) {
+      // Un error de conexión no confirma que la mesa fue retirada.
+      debugPrint('No se pudo actualizar el detalle de la mesa: $error');
+      return;
+    }
+    if (!mounted || revision != _reloadRevision) return;
     if (updated == null || !updated.visible) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -988,11 +1053,12 @@ class _PantallaDetalleExamenAtlassianState
     );
     if (!mounted || !access.isAdmin) return;
 
-    final result = await mostrarHojaAtlassian<_ResultadoEdicionDetalleExamen>(
-      context: context,
-      builder: (sheetContext) =>
-          _HojaEditarDetalleExamenAtlassian(event: _event),
-    );
+    final result =
+        await mostrarHojaAcademicaAtlassian<_ResultadoEdicionDetalleExamen>(
+          context: context,
+          builder: (sheetContext) =>
+              _HojaEditarDetalleExamenAtlassian(event: _event),
+        );
     if (result == null || !mounted) return;
 
     setState(() => _savingDetails = true);
@@ -1005,7 +1071,7 @@ class _PantallaDetalleExamenAtlassianState
         time: result.time,
         teachers: result.teachers,
       );
-      await _reloadCurrentEvent();
+      await ref.refresh(proveedorTodosLosExamenes.future).then<void>((_) {});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Fecha, hora y docentes actualizados.')),
@@ -1021,7 +1087,10 @@ class _PantallaDetalleExamenAtlassianState
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      TemaHerramientasApp(builder: _contenido);
+
+  Widget _contenido(BuildContext context) {
     final event = _event;
     final adminAccess = ref
         .watch(proveedorEstadoDispositivoAdministrador)
@@ -1030,144 +1099,143 @@ class _PantallaDetalleExamenAtlassianState
     final isAdmin = adminAccess?.isAdmin == true;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Column(
-        children: [
-          EncabezadoPaginaAtlassian(
-            title: 'Detalle del examen',
-            subtitle: _instanceLabel(event.instancia),
-            centerTitle: true,
-            leading: BotonIconoAtlassian(
-              icon: Icons.arrow_back_rounded,
-              tooltip: 'Volver',
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            actions: isAdmin
-                ? [
-                    BotonIconoAtlassian(
-                      icon: Icons.edit_calendar_rounded,
-                      tooltip: 'Editar fecha, hora y docentes',
-                      onPressed: _savingDetails
-                          ? null
-                          : () => unawaited(_openDetailEditSheet()),
-                    ),
-                  ]
-                : const <Widget>[],
-          ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                120 + MediaQuery.paddingOf(context).bottom,
+      body: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          children: [
+            EncabezadoPaginaAtlassian(
+              title: 'Detalle del examen',
+              subtitle: _instanceLabel(event.instancia),
+              centerTitle: true,
+              leading: BotonIconoAtlassian(
+                icon: Icons.arrow_back_rounded,
+                tooltip: 'Volver',
+                onPressed: () => volverPantallaAtlassian(context),
               ),
-              children: [
-                PanelAtlassian(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Wrap(
-                        spacing: 8,
-                        alignment: WrapAlignment.center,
-                        children: [
-                          if (event.mostrarAvisoEstado)
-                            LozengeAtlassian(
-                              label: event.estado.etiqueta,
-                              appearance: _statusAppearance(event.estado),
+              actions: isAdmin
+                  ? [
+                      BotonIconoAtlassian(
+                        icon: Icons.edit_calendar_rounded,
+                        tooltip: 'Editar fecha, hora y docentes',
+                        onPressed: _savingDetails
+                            ? null
+                            : () => unawaited(_openDetailEditSheet()),
+                      ),
+                    ]
+                  : const <Widget>[],
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                children: [
+                  PanelAtlassian(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Wrap(
+                          spacing: 8,
+                          alignment: WrapAlignment.center,
+                          children: [
+                            if (event.mostrarAvisoEstado)
+                              EtiquetaAcademicaAtlassian(
+                                label: event.estado.etiqueta,
+                                appearance: _statusAppearance(event.estado),
+                              ),
+                            EtiquetaAcademicaAtlassian(
+                              label: _shortInstanceLabel(event.instancia),
+                              appearance: event.instancia == 'coloquio'
+                                  ? AparienciaLozengeAtlassian.discovery
+                                  : AparienciaLozengeAtlassian.brand,
                             ),
-                          LozengeAtlassian(
-                            label: _shortInstanceLabel(event.instancia),
-                            appearance: event.instancia == 'coloquio'
-                                ? AparienciaLozengeAtlassian.discovery
-                                : AparienciaLozengeAtlassian.brand,
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: Text(
+                            event.materia,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (event.mostrarAvisoEstado) ...[
+                    const SizedBox(height: 12),
+                    _AvisoEstadoExamenAtlassian(event: event),
+                  ],
+                  const SizedBox(height: 12),
+                  PanelAtlassian(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        _DatoExamenAtlassian(
+                          icon: Icons.calendar_today_outlined,
+                          label: 'Fecha',
+                          value: formatoFechaAtlassian(event.fechaVigente),
+                        ),
+                        const Divider(height: 1),
+                        _DatoExamenAtlassian(
+                          icon: Icons.schedule_rounded,
+                          label: 'Hora',
+                          value: event.horaVigente ?? 'Sin horario',
+                        ),
+                        if (event.tieneFechaOriginalDistinta) ...[
+                          const Divider(height: 1),
+                          _DatoExamenAtlassian(
+                            icon: Icons.history_rounded,
+                            label: 'Anterior',
+                            value: formatoFechaHoraAtlassian(
+                              event.fecha,
+                              event.hora,
+                            ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: Text(
-                          event.materia,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.headlineSmall,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (event.mostrarAvisoEstado) ...[
-                  const SizedBox(height: 12),
-                  _AvisoEstadoExamenAtlassian(event: event),
-                ],
-                const SizedBox(height: 12),
-                PanelAtlassian(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      _DatoExamenAtlassian(
-                        icon: Icons.calendar_today_outlined,
-                        label: 'Fecha',
-                        value: formatoFechaAtlassian(event.fechaVigente),
-                      ),
-                      const Divider(height: 1),
-                      _DatoExamenAtlassian(
-                        icon: Icons.schedule_rounded,
-                        label: 'Hora',
-                        value: event.horaVigente ?? 'Sin horario',
-                      ),
-                      if (event.tieneFechaOriginalDistinta) ...[
                         const Divider(height: 1),
                         _DatoExamenAtlassian(
-                          icon: Icons.history_rounded,
-                          label: 'Anterior',
-                          value: formatoFechaHoraAtlassian(
-                            event.fecha,
-                            event.hora,
+                          icon: Icons.school_outlined,
+                          label: 'Año',
+                          value: event.anio == null
+                              ? 'Sin año'
+                              : '${event.anio}°',
+                        ),
+                        const Divider(height: 1),
+                        _DatoExamenAtlassian(
+                          icon: Icons.groups_outlined,
+                          label: 'Docentes',
+                          value: event.docentes.isEmpty
+                              ? 'Sin docentes informados'
+                              : event.docentes.join(', '),
+                        ),
+                        if ((event.division ?? '').trim().isNotEmpty) ...[
+                          const Divider(height: 1),
+                          _DatoExamenAtlassian(
+                            icon: Icons.badge_outlined,
+                            label: 'División',
+                            value: event.division!,
                           ),
-                        ),
+                        ],
                       ],
-                      const Divider(height: 1),
-                      _DatoExamenAtlassian(
-                        icon: Icons.school_outlined,
-                        label: 'Año',
-                        value: event.anio == null
-                            ? 'Sin año'
-                            : '${event.anio}°',
-                      ),
-                      const Divider(height: 1),
-                      _DatoExamenAtlassian(
-                        icon: Icons.groups_outlined,
-                        label: 'Docentes',
-                        value: event.docentes.isEmpty
-                            ? 'Sin docentes informados'
-                            : event.docentes.join(', '),
-                      ),
-                      if ((event.division ?? '').trim().isNotEmpty) ...[
-                        const Divider(height: 1),
-                        _DatoExamenAtlassian(
-                          icon: Icons.badge_outlined,
-                          label: 'División',
-                          value: event.division!,
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
-                ),
-                if (event.puedeAbrirActa) ...[
-                  const SizedBox(height: 16),
-                  BotonAtlassian(
-                    label: 'Abrir acta',
-                    icon: Icons.open_in_new_rounded,
-                    primary: true,
-                    expanded: true,
-                    onPressed: () => unawaited(_openAct()),
-                  ),
+                  if (event.puedeAbrirActa) ...[
+                    const SizedBox(height: 16),
+                    BotonAtlassian(
+                      label: 'Abrir acta',
+                      icon: Icons.open_in_new_rounded,
+                      primary: true,
+                      expanded: true,
+                      onPressed: () => unawaited(_openAct()),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
                 ],
-                const SizedBox(height: 48),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1554,7 +1622,7 @@ class _HojaControlRapidoExamenAtlassianState
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
                     ),
-                    LozengeAtlassian(
+                    EtiquetaAcademicaAtlassian(
                       label: status.etiqueta,
                       appearance: _statusAppearance(status),
                     ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../compartido/navegacion/transiciones_paginas_app.dart';
 import '../../trayectoria_sage_laboratorio/sage/estilo_visual_sage.dart';
 
 abstract final class PaletaAtlassian {
@@ -206,6 +207,7 @@ ThemeData temaLaboratorioAtlassian(
   );
 
   return parent.copyWith(
+    pageTransitionsTheme: buildAppPageTransitionsTheme(),
     extensions: extensions,
     brightness: dark ? Brightness.dark : Brightness.light,
     colorScheme: colorScheme,

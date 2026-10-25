@@ -1,10 +1,13 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../compartido/movimiento/movimiento_app.dart';
+import '../../../compartido/navegacion/barra_busqueda_app.dart';
+import '../../trayectoria_sage_laboratorio/datos/repositorio_documentos_academicos_sage.dart';
 import '../../trayectoria_sage_laboratorio/datos/repositorio_trayectoria_sage_laboratorio.dart';
+import '../../trayectoria_sage_laboratorio/documentos_pdf/abrir_documento_academico_sage.dart';
 import '../../trayectoria_sage_laboratorio/modelos/modelos_trayectoria_sage_laboratorio.dart';
 import '../../trayectoria_sage_laboratorio/sage/modelos_sincronizacion_sage_automatica.dart';
 import '../../trayectoria_sage_laboratorio/sage/pantalla_sage_laboratorio.dart';
@@ -58,10 +61,15 @@ class _PantallaInicioReactDeveloperState
   bool _saving = false;
   bool _sageFlowOpen = false;
   TipoDocumentoAcademicoSage? _openingDocumentType;
+  Set<String> _documentosLocales = {};
+  int _cargaDocumentos = 0;
 
   @override
   void initState() {
     super.initState();
+    widget.trajectoryListenable.addListener(_cargarDocumentosLocales);
+    widget.selectedCareerListenable.addListener(_cargarDocumentosLocales);
+    unawaited(_cargarDocumentosLocales());
     widget.resetListenable.addListener(_resetLocalState);
     widget.actionRequestListenable.addListener(_handleActionRequest);
   }
@@ -69,6 +77,18 @@ class _PantallaInicioReactDeveloperState
   @override
   void didUpdateWidget(covariant PantallaInicioReactDeveloper oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.trajectoryListenable != widget.trajectoryListenable) {
+      oldWidget.trajectoryListenable.removeListener(_cargarDocumentosLocales);
+      widget.trajectoryListenable.addListener(_cargarDocumentosLocales);
+      unawaited(_cargarDocumentosLocales());
+    }
+    if (oldWidget.selectedCareerListenable != widget.selectedCareerListenable) {
+      oldWidget.selectedCareerListenable.removeListener(
+        _cargarDocumentosLocales,
+      );
+      widget.selectedCareerListenable.addListener(_cargarDocumentosLocales);
+      unawaited(_cargarDocumentosLocales());
+    }
     if (oldWidget.resetListenable != widget.resetListenable) {
       oldWidget.resetListenable.removeListener(_resetLocalState);
       widget.resetListenable.addListener(_resetLocalState);
@@ -81,6 +101,8 @@ class _PantallaInicioReactDeveloperState
 
   @override
   void dispose() {
+    widget.trajectoryListenable.removeListener(_cargarDocumentosLocales);
+    widget.selectedCareerListenable.removeListener(_cargarDocumentosLocales);
     widget.resetListenable.removeListener(_resetLocalState);
     widget.actionRequestListenable.removeListener(_handleActionRequest);
     super.dispose();
@@ -159,17 +181,55 @@ class _PantallaInicioReactDeveloperState
         .documentosDeCarrera(career)
         .where((document) => document.tipo == tipo)
         .firstOrNull;
-    if (saved != null) return saved;
-    return DocumentoAcademicoSage(
-      tipo: tipo,
-      gridRowId: career.gridRowId,
-      careerKey: career.careerKey,
-      carrera: career.nombre,
-      institucion: career.institucion,
-      disponible:
-          career.gridRowId.trim().isNotEmpty ||
-          career.careerKey.trim().isNotEmpty,
-    );
+    final documento =
+        saved ??
+        DocumentoAcademicoSage(
+          tipo: tipo,
+          gridRowId: career.gridRowId,
+          careerKey: career.careerKey,
+          carrera: career.nombre,
+          institucion: career.institucion,
+          disponible:
+              career.gridRowId.trim().isNotEmpty ||
+              career.careerKey.trim().isNotEmpty,
+        );
+    try {
+      final clave = ClaveDocumentoAcademicoSage.de(
+        trajectory.perfil,
+        documento,
+      );
+      if (!documento.disponible && _documentosLocales.contains(clave.id)) {
+        return DocumentoAcademicoSage.fromJson({
+          ...documento.toJson(),
+          'disponible': true,
+        });
+      }
+    } on FormatException {
+      /* La identidad se valida antes de obtenerlo. */
+    }
+    return documento;
+  }
+
+  Future<void> _cargarDocumentosLocales() async {
+    final carga = ++_cargaDocumentos;
+    final perfil = widget.trajectoryListenable.value?.perfil;
+    final disponibles = <String>{};
+    if (perfil != null) {
+      for (final tipo in TipoDocumentoAcademicoSage.values) {
+        final documento = _selectedAcademicDocument(tipo);
+        if (documento == null) continue;
+        try {
+          final clave = ClaveDocumentoAcademicoSage.de(perfil, documento);
+          if (await const RepositorioDocumentosAcademicosSage().cargar(clave) !=
+              null) {
+            disponibles.add(clave.id);
+          }
+        } catch (_) {}
+      }
+    }
+    if (mounted && carga == _cargaDocumentos) {
+      setState(() => _documentosLocales = disponibles);
+    }
   }
 
   void _openScenarios() {
@@ -416,35 +476,29 @@ class _PantallaInicioReactDeveloperState
         mensaje: 'Preparando ${document.tipo.etiqueta}',
       );
     });
-    final atlassianTheme = temaLaboratorioAtlassian(context);
     try {
-      await Navigator.of(context, rootNavigator: true).push<void>(
-        rutaAtlassian<void>(
-          builder: (sageContext) => PantallaSageLaboratorio(
-            onClose: () => Navigator.of(sageContext).pop(),
-            themeOverride: atlassianTheme,
-            appBarBackground: atlassianTheme.colorScheme.surface,
-            appBarForeground: atlassianTheme.colorScheme.onSurface,
-            title: document.tipo.etiqueta,
-            modo: ModoPantallaSageLaboratorio.descargaDocumento,
-            documentoSolicitado: document,
-            perfilEsperado: widget.trajectoryListenable.value?.perfil,
-            onDocumentoDescargado: (_) {
-              if (!mounted) return;
-              setState(() {
-                _preparation = EstadoPreparacionSageLaboratorio(
-                  mensaje: '${document.tipo.etiqueta} descargado',
-                  progreso: 1,
-                );
-              });
-            },
-            onEstadoPreparacion: (status) {
-              if (!mounted) return;
-              setState(() => _preparation = status);
-            },
-          ),
-        ),
+      final perfil = widget.trajectoryListenable.value?.perfil;
+      if (perfil == null) return;
+      await abrirDocumentoAcademicoSage(
+        context,
+        documento: document,
+        perfil: perfil,
+        onEstadoPreparacion: (status) {
+          if (mounted) setState(() => _preparation = status);
+        },
       );
+      await _cargarDocumentosLocales();
+    } catch (error, stack) {
+      // El diagnóstico no incluye credenciales ni datos del titular.
+      debugPrint('SAGE documento: ${error.runtimeType}');
+      debugPrint(stack.toString().split('\n').take(4).join('\n'));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo abrir el documento académico.'),
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -614,6 +668,7 @@ class _PantallaInicioReactDeveloperState
 
   @override
   Widget build(BuildContext context) {
+    final mostrarBarra = !CicloBusquedaApp.barraExternaDe(context);
     return ValueListenableBuilder<bool>(
       valueListenable: widget.localLoadedListenable,
       builder: (context, loaded, _) {
@@ -639,6 +694,7 @@ class _PantallaInicioReactDeveloperState
 
                 return Scaffold(
                   backgroundColor: reactTheme.canvas,
+                  resizeToAvoidBottomInset: false,
                   body: Stack(
                     children: [
                       Column(
@@ -648,90 +704,64 @@ class _PantallaInicioReactDeveloperState
                             nombre: trajectory?.perfil.nombre,
                           ),
                           Expanded(
-                            child: _InicioReactSoloBusqueda(
-                              loaded: loaded,
-                              hasTrajectory: trajectory != null,
-                              busy: _saving || _sageFlowOpen,
-                              documents: quickDocuments,
-                              onSync: _sync,
-                              onOpenDocument: _openAcademicDocument,
+                            child: EntradaContenidoApp(
+                              orden: 1,
+                              child: _InicioReactSoloBusqueda(
+                                loaded: loaded,
+                                hasTrajectory: trajectory != null,
+                                busy: _saving || _sageFlowOpen,
+                                documents: quickDocuments,
+                                onSync: _sync,
+                                onOpenDocument: _openAcademicDocument,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: IgnorePointer(
-                          child: ClipRect(
-                            child: ShaderMask(
-                              shaderCallback: (rect) => const LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: [
-                                  Colors.black,
-                                  Colors.black,
-                                  Colors.black87,
-                                  Colors.black38,
-                                  Colors.transparent,
-                                ],
-                                stops: [0.0, 0.28, 0.54, 0.78, 1.0],
-                              ).createShader(rect),
-                              blendMode: BlendMode.dstIn,
-                              child: BackdropFilter(
-                                filter: ui.ImageFilter.blur(
-                                  sigmaX: 14,
-                                  sigmaY: 14,
+                      if (mostrarBarra)
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          height: 100,
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                  colors: [
+                                    reactTheme.canvas,
+                                    reactTheme.canvas.withValues(alpha: 0),
+                                  ],
                                 ),
-                                child: Container(
-                                  height: 126,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.bottomCenter,
-                                      end: Alignment.topCenter,
-                                      colors: [
-                                        reactTheme.canvas.withValues(
-                                          alpha: 0.96,
-                                        ),
-                                        reactTheme.canvas.withValues(
-                                          alpha: 0.72,
-                                        ),
-                                        reactTheme.canvas.withValues(
-                                          alpha: 0.22,
-                                        ),
-                                        reactTheme.canvas.withValues(alpha: 0),
-                                      ],
-                                      stops: const [0.0, 0.34, 0.70, 1.0],
-                                    ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (mostrarBarra)
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          child: SafeArea(
+                            top: false,
+                            maintainBottomViewPadding: true,
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                              child: Center(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 720,
+                                  ),
+                                  child: _BusquedaLiquidGlassReact(
+                                    onTap: widget.onSearch,
                                   ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: SafeArea(
-                          top: false,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                            child: Center(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 720,
-                                ),
-                                child: _BusquedaLiquidGlassReact(
-                                  onTap: widget.onSearch,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 );
@@ -765,9 +795,7 @@ class _EncabezadoInicioReact extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 78),
               child: TweenAnimationBuilder<double>(
                 tween: Tween<double>(begin: 0, end: 1),
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 420),
+                duration: reduceMotion ? Duration.zero : MovimientoApp.entrada,
                 curve: Curves.easeOutCubic,
                 builder: (context, progress, child) => Opacity(
                   opacity: progress,
@@ -998,7 +1026,7 @@ class _AccesoDocumentoInicioReact extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: enabled,
-      label: 'Descargar ${document.tipo.etiqueta}',
+      label: 'Abrir ${document.tipo.etiqueta}',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1040,157 +1068,15 @@ class _AccesoDocumentoInicioReact extends StatelessWidget {
   }
 }
 
-class _BusquedaLiquidGlassReact extends StatefulWidget {
+class _BusquedaLiquidGlassReact extends StatelessWidget {
   const _BusquedaLiquidGlassReact({required this.onTap});
-
   final VoidCallback onTap;
 
   @override
-  State<_BusquedaLiquidGlassReact> createState() =>
-      _BusquedaLiquidGlassReactState();
-}
-
-class _BusquedaLiquidGlassReactState extends State<_BusquedaLiquidGlassReact> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final scheme = Theme.of(context).colorScheme;
-    final reactTheme = context.reactTheme;
-    final borderRadius = BorderRadius.circular(31);
-
-    return Semantics(
-      button: true,
-      label: 'Buscar en Trayectorias',
-      child: AnimatedScale(
-        duration: reduceMotion
-            ? Duration.zero
-            : const Duration(milliseconds: 150),
-        curve: Curves.easeOutCubic,
-        scale: _pressed ? 0.985 : 1,
-        child: Container(
-          key: const ValueKey<String>('inicio-react-liquid-search'),
-          padding: const EdgeInsets.all(1.2),
-          decoration: BoxDecoration(
-            borderRadius: borderRadius,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFF85B8FF).withValues(alpha: 0.72),
-                reactTheme.neutralOverlay(0.14),
-                const Color(0xFFA78BFA).withValues(alpha: 0.48),
-              ],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF0C66E4).withValues(alpha: 0.17),
-                blurRadius: 22,
-                spreadRadius: -4,
-                offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: reactTheme.shadow,
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(30),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: widget.onTap,
-                  onHighlightChanged: (pressed) {
-                    if (_pressed == pressed) return;
-                    setState(() => _pressed = pressed);
-                  },
-                  child: Container(
-                    key: const ValueKey<String>('inicio-react-liquid-surface'),
-                    height: 58,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: reactTheme.liquidGradient(scheme),
-                        stops: const [0.0, 0.34, 0.70, 1.0],
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFF0C66E4), Color(0xFF7C66E8)],
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(
-                                  0xFF579DFF,
-                                ).withValues(alpha: 0.30),
-                                blurRadius: 14,
-                                spreadRadius: -2,
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.search_rounded,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 13),
-                        Expanded(
-                          child: Text(
-                            'Buscar en Trayectorias…',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyLarge
-                                ?.copyWith(
-                                  color: scheme.onSurface.withValues(
-                                    alpha: 0.92,
-                                  ),
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: -0.2,
-                                ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: reactTheme.neutralOverlay(0.06),
-                            border: Border.all(color: reactTheme.border),
-                          ),
-                          child: Icon(
-                            Icons.arrow_forward_rounded,
-                            color: scheme.onSurfaceVariant,
-                            size: 18,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => BarraBusquedaApp(
+    key: const ValueKey<String>('inicio-react-liquid-search'),
+    onTap: onTap,
+  );
 }
 
 class _HeroPerfilReact extends StatelessWidget {
@@ -1405,9 +1291,7 @@ class _AccionHeroReactState extends State<_AccionHeroReact> {
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final enabled = widget.onTap != null;
-    final duration = reduceMotion
-        ? Duration.zero
-        : const Duration(milliseconds: 180);
+    final duration = reduceMotion ? Duration.zero : MovimientoApp.respuesta;
     final foreground = enabled
         ? Colors.white
         : Colors.white.withValues(alpha: 0.34);
@@ -1748,9 +1632,7 @@ class _CountUpReact extends StatelessWidget {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0, end: value.toDouble()),
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 520),
+      duration: reduceMotion ? Duration.zero : MovimientoApp.entrada,
       curve: Curves.easeOutCubic,
       builder: (context, current, _) =>
           Text('${current.round()}$suffix', style: style),
@@ -1897,9 +1779,7 @@ class _DocumentoReactCardState extends State<_DocumentoReactCard> {
     ][widget.index.clamp(0, 2).toInt()];
 
     return AnimatedScale(
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 150),
+      duration: reduceMotion ? Duration.zero : MovimientoApp.respuesta,
       scale: _pressed && enabled ? 0.96 : 1,
       child: Opacity(
         opacity: available ? (widget.busy && !widget.loading ? 0.58 : 1) : 0.42,
@@ -2014,9 +1894,7 @@ class _SpotlightReactState extends State<_SpotlightReact> {
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedScale(
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 160),
+      duration: reduceMotion ? Duration.zero : MovimientoApp.respuesta,
       scale: _pressed ? 0.985 : 1,
       child: Material(
         color: Colors.transparent,
@@ -2217,9 +2095,7 @@ class _BentoActionReactState extends State<_BentoActionReact> {
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final item = widget.item;
-    final duration = reduceMotion
-        ? Duration.zero
-        : const Duration(milliseconds: 170);
+    final duration = reduceMotion ? Duration.zero : MovimientoApp.respuesta;
 
     return AnimatedScale(
       duration: duration,
@@ -2362,9 +2238,7 @@ class _MateriaChromaReactState extends State<_MateriaChromaReact> {
     final state = materia.estado.etiqueta.toLowerCase();
 
     return AnimatedScale(
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 150),
+      duration: reduceMotion ? Duration.zero : MovimientoApp.respuesta,
       scale: _pressed ? 0.982 : 1,
       child: Material(
         color: Colors.transparent,

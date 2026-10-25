@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../compartido/supabase/supabase.dart';
+import '../../examenes/proveedores/proveedores_examenes.dart';
 import '../datos/repositorio_eventos_examen_administrador.dart';
 import '../modelos/evento_examen_administrador.dart';
 
@@ -12,6 +13,8 @@ final proveedorRepositorioEventosExamenAdministrador =
 
 final proveedorEventosExamenAdministrador =
     FutureProvider<List<EventoExamenAdministrador>>((ref) async {
+      ref.watch(proveedorSincronizacionExamenes);
+      ref.watch(proveedorRevisionExamenes);
       final bootstrap = ref.watch(proveedorArranqueSupabase);
       final client = ref.watch(proveedorClienteSupabase);
 

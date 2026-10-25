@@ -7,9 +7,6 @@ class TarjetaEsperaCalculadora extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = EstilosCalculadora.esOscuro(context);
-
     return Container(
       decoration: EstilosCalculadora.decoracionTarjeta(context),
       padding: const EdgeInsets.all(16),
@@ -19,7 +16,7 @@ class TarjetaEsperaCalculadora extends StatelessWidget {
         style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w500,
-          color: isDark ? cs.onSurfaceVariant : const Color(0xFF9CA3AF),
+          color: EstilosCalculadora.textoSecundario(context),
         ),
       ),
     );

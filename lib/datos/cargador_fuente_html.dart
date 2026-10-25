@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../modelos/materia.dart';
@@ -24,7 +24,26 @@ Future<DatosPlan> cargarPlanDesdePoliticaHtml() =>
 Future<DatosPlan> cargarPlanDesdeAssetHtml(String assetPath) =>
     cargarPlanDesdeHtml(assetPath);
 
-Future<DatosPlan> cargarPlanDesdeHtml(String assetPath) async {
+// Los assets son inmutables en cada versión. Compartir la carga evita
+// relanzar un isolate por carrera cada vez que se abre el buscador.
+final _planesEnMemoria = <String, Future<DatosPlan>>{};
+
+@visibleForTesting
+void limpiarCachePlanesParaPruebas() => _planesEnMemoria.clear();
+
+Future<DatosPlan> cargarPlanDesdeHtml(String assetPath) {
+  return _planesEnMemoria.putIfAbsent(assetPath, () {
+    return _leerPlanDesdeHtml(assetPath).catchError((
+      Object error,
+      StackTrace stack,
+    ) {
+      _planesEnMemoria.remove(assetPath);
+      Error.throwWithStackTrace(error, stack);
+    });
+  });
+}
+
+Future<DatosPlan> _leerPlanDesdeHtml(String assetPath) async {
   final content = await rootBundle.loadString(assetPath);
 
   if (assetPath.endsWith('.json')) {
@@ -63,8 +82,10 @@ Map<String, dynamic> _parsearPayloadPlanHtml(String html) {
   _applyReqsToCorrelativasDetalladas(dynamicList);
   _applyFixPracticaIV(dynamicList);
 
-  final pdfMatch = RegExp(r"const\s+pdfUrl\s*=\s*'([^']+)'", multiLine: true)
-      .firstMatch(html);
+  final pdfMatch = RegExp(
+    r"const\s+pdfUrl\s*=\s*'([^']+)'",
+    multiLine: true,
+  ).firstMatch(html);
 
   return <String, dynamic>{
     'materias': dynamicList,
@@ -77,8 +98,10 @@ String? _extraerArrayMaterias(String html) {
   src = src.replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
   src = src.replaceAll(RegExp(r'//[^\n\r]*'), '');
 
-  final match =
-      RegExp(r'\bmaterias\b\s*=\s*\[', caseSensitive: false).firstMatch(src);
+  final match = RegExp(
+    r'\bmaterias\b\s*=\s*\[',
+    caseSensitive: false,
+  ).firstMatch(src);
   if (match == null) return null;
 
   final startBracket = match.end - 1;
@@ -174,8 +197,9 @@ void _applyReqsToCorrelativasDetalladas(List<dynamic> list) {
     if (reqs is! List || reqs.isEmpty) continue;
 
     final existingRaw = map['correlativasDetalladas'];
-    final det =
-        existingRaw is List ? List<dynamic>.from(existingRaw) : <dynamic>[];
+    final det = existingRaw is List
+        ? List<dynamic>.from(existingRaw)
+        : <dynamic>[];
 
     for (final req in reqs) {
       if (req is! Map) continue;
@@ -211,7 +235,8 @@ void _applyFixPracticaIV(List<dynamic> list) {
     final map = item.cast<String, dynamic>();
     final nombre = (map['nombre'] ?? '').toString().toLowerCase();
 
-    final match = nombre.contains('práctica docente iv') ||
+    final match =
+        nombre.contains('práctica docente iv') ||
         nombre.contains('practica docente iv');
 
     if (match) {

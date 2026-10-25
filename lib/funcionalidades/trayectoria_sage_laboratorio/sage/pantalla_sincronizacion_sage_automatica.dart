@@ -35,6 +35,20 @@ class _PantallaSincronizacionSageAutomaticaState
   bool _ocultarPassword = true;
 
   @override
+  void didUpdateWidget(PantallaSincronizacionSageAutomatica oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final state = widget.estado;
+    final sesionAceptada =
+        !state.esError &&
+        !state.solicitaCredenciales &&
+        (state.etapa == EtapaSincronizacionSageAutomatica.reanudandoSesion ||
+            state.etapa == EtapaSincronizacionSageAutomatica.detectandoPerfil ||
+            (state.paso?.index ?? 0) >
+                PasoSincronizacionSageAutomatica.sesion.index);
+    if (sesionAceptada) _passwordController.clear();
+  }
+
+  @override
   void dispose() {
     _usuarioController.dispose();
     _passwordController.dispose();
@@ -53,7 +67,6 @@ class _PantallaSincronizacionSageAutomaticaState
     final usuario = _usuarioController.text.trim();
     final password = _passwordController.text;
     await widget.onIngresar(usuario, password);
-    if (mounted) _passwordController.clear();
   }
 
   @override
@@ -73,52 +86,52 @@ class _PantallaSincronizacionSageAutomaticaState
         child: Stack(
           children: [
             Positioned.fill(
-              child: AnimatedSwitcher(
-                duration: duration,
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  final curved = CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOutCubic,
-                    reverseCurve: Curves.easeInCubic,
-                  );
-                  return FadeTransition(
-                    opacity: curved,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.03),
-                        end: Offset.zero,
-                      ).animate(curved),
-                      child: child,
+              child:
+                  _TransicionSage<(EstadoSincronizacionSageAutomatica, bool)>(
+                    value: (state, showLogin),
+                    identity: showLogin,
+                    duration: duration,
+                    builder: (context, visible, opacity) => FadeTransition(
+                      opacity: opacity,
+                      child: visible.$2
+                          ? Center(
+                              key: const ValueKey<String>(
+                                'sage-auto-layout-login',
+                              ),
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.fromLTRB(
+                                  24,
+                                  28,
+                                  24,
+                                  36,
+                                ),
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 440,
+                                  ),
+                                  child: _buildLogin(context, visible.$1),
+                                ),
+                              ),
+                            )
+                          : Center(
+                              key: const ValueKey<String>(
+                                'sage-auto-layout-progress',
+                              ),
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 36,
+                                ),
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 440,
+                                  ),
+                                  child: _buildProgress(context, visible.$1),
+                                ),
+                              ),
+                            ),
                     ),
-                  );
-                },
-                child: showLogin
-                    ? Center(
-                        key: const ValueKey<String>('sage-auto-layout-login'),
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(24, 28, 24, 36),
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 440),
-                            child: _buildLogin(context),
-                          ),
-                        ),
-                      )
-                    : SingleChildScrollView(
-                        key: const ValueKey<String>(
-                          'sage-auto-layout-progress',
-                        ),
-                        padding: const EdgeInsets.fromLTRB(24, 72, 24, 36),
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 440),
-                            child: _buildProgress(context),
-                          ),
-                        ),
-                      ),
-              ),
+                  ),
             ),
             Positioned(
               top: 4,
@@ -135,8 +148,10 @@ class _PantallaSincronizacionSageAutomaticaState
     );
   }
 
-  Widget _buildLogin(BuildContext context) {
-    final state = widget.estado;
+  Widget _buildLogin(
+    BuildContext context,
+    EstadoSincronizacionSageAutomatica state,
+  ) {
     final scheme = Theme.of(context).colorScheme;
     return AutofillGroup(
       key: const ValueKey('sage-auto-login'),
@@ -252,18 +267,21 @@ class _PantallaSincronizacionSageAutomaticaState
     );
   }
 
-  Widget _buildProgress(BuildContext context) {
-    final state = widget.estado;
-    final completed = state.completada;
-    final isError = state.esError;
+  Widget _buildProgress(
+    BuildContext context,
+    EstadoSincronizacionSageAutomatica state,
+  ) {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final duration = reduceMotion
         ? Duration.zero
         : const Duration(milliseconds: 220);
-    return KeyedSubtree(
+    return _TransicionSage<EstadoSincronizacionSageAutomatica>(
       key: const ValueKey<String>('sage-auto-progress'),
-      child: Column(
+      value: state,
+      identity: _StepperSincronizacionSage.identidad(state),
+      duration: duration,
+      builder: (context, visible, opacity) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
@@ -275,12 +293,16 @@ class _PantallaSincronizacionSageAutomaticaState
             ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 26),
-          _StepperSincronizacionSage(estado: state, duration: duration),
-          if (!completed && !isError) ...[
+          _StepperSincronizacionSage(
+            estado: visible,
+            duration: duration,
+            opacity: opacity,
+          ),
+          if (!visible.completada && !visible.esError) ...[
             const SizedBox(height: 18),
-            _BarraProgresoSage(value: state.progreso, duration: duration),
+            _BarraProgresoSage(value: visible.progreso, duration: duration),
           ],
-          if (isError && state.permiteReintentar) ...[
+          if (visible.esError && visible.permiteReintentar) ...[
             const SizedBox(height: 22),
             FilledButton.icon(
               onPressed: widget.onReintentar,
@@ -292,6 +314,89 @@ class _PantallaSincronizacionSageAutomaticaState
       ),
     );
   }
+}
+
+/// Mantiene un único contenido. Durante la salida conserva el actual y,
+/// al quedar transparente, toma la actualización más reciente sin encolarlas.
+class _TransicionSage<T> extends StatefulWidget {
+  const _TransicionSage({
+    super.key,
+    required this.value,
+    required this.identity,
+    required this.duration,
+    required this.builder,
+  });
+
+  final T value;
+  final Object identity;
+  final Duration duration;
+  final Widget Function(BuildContext, T, Animation<double>) builder;
+
+  @override
+  State<_TransicionSage<T>> createState() => _TransicionSageState<T>();
+}
+
+class _TransicionSageState<T> extends State<_TransicionSage<T>>
+    with SingleTickerProviderStateMixin {
+  late T _visible;
+  late Object _identity;
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _visible = widget.value;
+    _identity = widget.identity;
+    _controller = AnimationController(
+      vsync: this,
+      duration: widget.duration ~/ 2,
+      value: 1,
+    )..addStatusListener(_onStatus);
+    _opacity = _controller.drive(CurveTween(curve: Curves.easeInOutCubic));
+  }
+
+  @override
+  void didUpdateWidget(covariant _TransicionSage<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _controller.duration = widget.duration ~/ 2;
+    if (widget.duration == Duration.zero) {
+      _visible = widget.value;
+      _identity = widget.identity;
+      _controller.value = 1;
+    } else if (widget.identity == _identity) {
+      // El avance numérico no reinicia la transición de los mensajes.
+      _visible = widget.value;
+      if (_controller.status == AnimationStatus.reverse) {
+        _controller.forward();
+      }
+    } else if (!_controller.isAnimating) {
+      _controller.reverse();
+    }
+  }
+
+  void _onStatus(AnimationStatus status) {
+    if (status == AnimationStatus.dismissed) {
+      setState(() {
+        _visible = widget.value;
+        _identity = widget.identity;
+      });
+      _controller.forward();
+    } else if (status == AnimationStatus.completed &&
+        widget.identity != _identity) {
+      _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, _visible, _opacity);
 }
 
 class _BarraProgresoSage extends StatelessWidget {
@@ -331,6 +436,7 @@ class _StepperSincronizacionSage extends StatelessWidget {
   const _StepperSincronizacionSage({
     required this.estado,
     required this.duration,
+    required this.opacity,
   });
 
   static const _etiquetas = <String>[
@@ -342,11 +448,26 @@ class _StepperSincronizacionSage extends StatelessWidget {
 
   final EstadoSincronizacionSageAutomatica estado;
   final Duration duration;
+  final Animation<double> opacity;
+
+  static Object identidad(EstadoSincronizacionSageAutomatica estado) => (
+    _indiceEtapa(estado.paso),
+    estado.completada,
+    estado.esError,
+    estado.completada ? estado.titulo : null,
+    estado.detalle?.trim().isNotEmpty == true
+        ? estado.detalle!.trim()
+        : estado.titulo.trim(),
+    estado.sesionReutilizada,
+    estado.intentoActual,
+    estado.intentosMaximos,
+    estado.codigoVisible,
+    estado.permiteReintentar,
+  );
 
   @override
   Widget build(BuildContext context) {
     final currentIndex = _indiceEtapa(estado.paso);
-    final currentStatus = _statusFor(currentIndex, currentIndex);
     final currentLabel = _etiquetas[currentIndex];
     final detail = _supportingText();
     final eyebrow = estado.completada
@@ -393,43 +514,13 @@ class _StepperSincronizacionSage extends StatelessWidget {
               key: const ValueKey<String>('sage-sync-step-content'),
               height: 144,
               child: ClipRect(
-                child: AnimatedSwitcher(
-                  duration: duration,
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeOutCubic,
-                  layoutBuilder: (currentChild, previousChildren) => Stack(
-                    alignment: Alignment.topLeft,
-                    children: [
-                      ...previousChildren,
-                      if (currentChild != null) currentChild,
-                    ],
-                  ),
-                  transitionBuilder: (child, animation) {
-                    final curved = CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutCubic,
-                    );
-                    return FadeTransition(
-                      opacity: curved,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0.045, 0),
-                          end: Offset.zero,
-                        ).animate(curved),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: _ContenidoEtapaSage(
-                    key: ValueKey<String>(
-                      '$currentIndex-${currentStatus.name}-$description',
-                    ),
-                    eyebrow: eyebrow,
-                    title: title,
-                    detail: description,
-                    metadata: _metadata(),
-                    isError: estado.esError,
-                  ),
+                child: _ContenidoEtapaSage(
+                  eyebrow: eyebrow,
+                  title: title,
+                  detail: description,
+                  metadata: _metadata(),
+                  isError: estado.esError,
+                  opacity: opacity,
                 ),
               ),
             ),
@@ -482,17 +573,18 @@ class _StepperSincronizacionSage extends StatelessWidget {
     return _EstadoEtapaStepperSage.activa;
   }
 
-  int _indiceEtapa(PasoSincronizacionSageAutomatica? paso) => switch (paso) {
-    PasoSincronizacionSageAutomatica.sesion => 0,
-    PasoSincronizacionSageAutomatica.perfil ||
-    PasoSincronizacionSageAutomatica.legajo => 1,
-    PasoSincronizacionSageAutomatica.escolares ||
-    PasoSincronizacionSageAutomatica.historial ||
-    PasoSincronizacionSageAutomatica.carreras => 2,
-    PasoSincronizacionSageAutomatica.documentos ||
-    PasoSincronizacionSageAutomatica.guardado => 3,
-    null => 0,
-  };
+  static int _indiceEtapa(PasoSincronizacionSageAutomatica? paso) =>
+      switch (paso) {
+        PasoSincronizacionSageAutomatica.sesion => 0,
+        PasoSincronizacionSageAutomatica.perfil ||
+        PasoSincronizacionSageAutomatica.legajo => 1,
+        PasoSincronizacionSageAutomatica.escolares ||
+        PasoSincronizacionSageAutomatica.historial ||
+        PasoSincronizacionSageAutomatica.carreras => 2,
+        PasoSincronizacionSageAutomatica.documentos ||
+        PasoSincronizacionSageAutomatica.guardado => 3,
+        null => 0,
+      };
 }
 
 class _MarcadorEtapaSage extends StatelessWidget {
@@ -619,22 +711,10 @@ class _MarcadorEtapaSage extends StatelessWidget {
                 key: ValueKey<String>('sage-sync-step-$index-${status.name}'),
                 dimension: 32,
               ),
-              AnimatedSwitcher(
+              AnimatedScale(
                 duration: duration,
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeOutCubic,
-                transitionBuilder: (child, animation) {
-                  final scale = Tween<double>(begin: 0.92, end: 1).animate(
-                    CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutCubic,
-                    ),
-                  );
-                  return FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(scale: scale, child: child),
-                  );
-                },
+                curve: Curves.easeOutCubic,
+                scale: status == _EstadoEtapaStepperSage.activa ? 1 : 0.94,
                 child: marker,
               ),
             ],
@@ -681,12 +761,12 @@ class _ConectorEtapaSage extends StatelessWidget {
 
 class _ContenidoEtapaSage extends StatelessWidget {
   const _ContenidoEtapaSage({
-    super.key,
     required this.eyebrow,
     required this.title,
     required this.detail,
     required this.metadata,
     required this.isError,
+    required this.opacity,
   });
 
   final String eyebrow;
@@ -694,6 +774,7 @@ class _ContenidoEtapaSage extends StatelessWidget {
   final String detail;
   final List<_MetadataEtapaSage> metadata;
   final bool isError;
+  final Animation<double> opacity;
 
   @override
   Widget build(BuildContext context) {
@@ -702,37 +783,45 @@ class _ContenidoEtapaSage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          eyebrow,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: accent,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: isError ? scheme.error : scheme.onSurface,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 5),
-        SizedBox(
-          height: 42,
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: Text(
-              detail,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-                height: 1.35,
+        FadeTransition(
+          opacity: opacity,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                eyebrow,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: accent,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
+              const SizedBox(height: 4),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: isError ? scheme.error : scheme.onSurface,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 5),
+              SizedBox(
+                height: 42,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Text(
+                    detail,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         if (metadata.isNotEmpty)
@@ -741,7 +830,11 @@ class _ContenidoEtapaSage extends StatelessWidget {
             runSpacing: 4,
             children: [
               for (final item in metadata)
-                _MetadataEtapaSageVisual(item: item, isError: isError),
+                _MetadataEtapaSageVisual(
+                  key: ValueKey(item.label),
+                  item: item,
+                  isError: isError,
+                ),
             ],
           ),
       ],
@@ -757,7 +850,11 @@ class _MetadataEtapaSage {
 }
 
 class _MetadataEtapaSageVisual extends StatelessWidget {
-  const _MetadataEtapaSageVisual({required this.item, required this.isError});
+  const _MetadataEtapaSageVisual({
+    super.key,
+    required this.item,
+    required this.isError,
+  });
 
   final _MetadataEtapaSage item;
   final bool isError;

@@ -168,14 +168,15 @@ class TarjetaRegimenCorrelatividades extends ConsumerWidget {
         );
       case 'fisica':
         return const _RegimenData(
-          carreraLinea: 'Profesorado de Educacion Fisica',
-          carreraCorta: 'Educacion Fisica',
+          carreraLinea: 'Profesorado en Educación Física',
+          carreraCorta: 'Educación Física',
           institucionLinea:
-              'Instituto Superior de las Especialidades de la Educacion Fisica',
+              'Instituto Superior de las Especialidades de la Educación Física',
           institucionCorta: 'I.S.E.E.F.',
-          logoAsset: 'assets/career_icons/career_logo.png',
+          logoAsset: 'assets/career_icons/logo_iseef.png',
+          logoScale: 1.0,
           resolucion:
-              'Resolucion N 0338/23 C.G.E. | Expte. Grabado N (1943502) | Provincia de Entre Rios - Consejo General de Educacion.',
+              'Resolución N° 0338/23 C.G.E. | Expte. Grabado N° (1943502) | Provincia de Entre Ríos - Consejo General de Educación.',
         );
       case 'politica':
         return const _RegimenData(
@@ -444,7 +445,7 @@ class _LargeInstitutionCard extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: Transform.scale(
-              scale: 1.22,
+              scale: data.logoScale,
               child: Image.asset(
                 data.logoAsset,
                 fit: BoxFit.cover,
@@ -494,6 +495,7 @@ class _RegimenData {
     required this.institucionLinea,
     required this.institucionCorta,
     required this.logoAsset,
+    this.logoScale = 1.22,
     required this.resolucion,
   });
 
@@ -502,5 +504,6 @@ class _RegimenData {
   final String institucionLinea;
   final String institucionCorta;
   final String logoAsset;
+  final double logoScale;
   final String? resolucion;
 }

@@ -74,10 +74,9 @@ void main() {
     },
   );
 
-  test('el campo React usa una única superficie Liquid Glass', () {
+  test('el campo compartido usa una única superficie', () {
     final source = File(
-      'lib/funcionalidades/laboratorio_atlassian/busqueda/'
-      'pantalla_busqueda_global_react_developer.dart',
+      'lib/compartido/navegacion/barra_busqueda_app.dart',
     ).readAsStringSync(encoding: utf8);
 
     expect(source, contains('filled: false'));

@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
-import '../tema/tema_atlassian.dart';
+import '../../../compartido/movimiento/movimiento_app.dart';
+import '../../../compartido/navegacion/barra_busqueda_app.dart';
 import '../../administrador/pantallas/acceso_administrador_pantalla.dart';
+import '../tema/tema_atlassian.dart';
+
+void volverPantallaAtlassian(BuildContext context) {
+  final volver = RegresoBusquedaApp.de(context);
+  if (volver != null) {
+    volver();
+  } else {
+    Navigator.of(context).pop();
+  }
+}
 
 String primerNombreAtlassian(String? nombreCompleto) {
   final normalizado = nombreCompleto?.trim() ?? '';
@@ -35,6 +45,7 @@ class PanelAtlassian extends StatelessWidget {
     this.borderColor,
     this.radius = RadioAtlassian.large,
     this.selected = false,
+    this.ordenEntrada = 0,
   });
 
   final Widget child;
@@ -44,6 +55,7 @@ class PanelAtlassian extends StatelessWidget {
   final Color? borderColor;
   final double radius;
   final bool selected;
+  final int ordenEntrada;
 
   @override
   Widget build(BuildContext context) {
@@ -59,24 +71,32 @@ class PanelAtlassian extends StatelessWidget {
     );
 
     if (onTap == null) {
-      return Material(
-        color: bg,
-        shape: shape,
-        clipBehavior: Clip.antiAlias,
-        child: Padding(padding: padding, child: child),
+      return EntradaContenidoApp(
+        orden: ordenEntrada,
+        child: Material(
+          color: bg,
+          shape: shape,
+          clipBehavior: Clip.antiAlias,
+          child: Padding(padding: padding, child: child),
+        ),
       );
     }
 
-    return Material(
-      color: bg,
-      shape: shape,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap!();
-        },
-        child: Padding(padding: padding, child: child),
+    return EntradaContenidoApp(
+      orden: ordenEntrada,
+      child: ToqueMovimientoApp(
+        child: Material(
+          color: bg,
+          shape: shape,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onTap!();
+            },
+            child: Padding(padding: padding, child: child),
+          ),
+        ),
       ),
     );
   }
@@ -121,13 +141,16 @@ class EncabezadoPaginaAtlassian extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [              Stack(
+            children: [
+              Stack(
                 alignment: Alignment.center,
                 children: [
                   IgnorePointer(
                     child: Padding(
                       padding: EdgeInsets.symmetric(
-                        horizontal: (leading != null || actions.isNotEmpty) ? 56 : 0,
+                        horizontal: (leading != null || actions.isNotEmpty)
+                            ? 56
+                            : 0,
                       ),
                       child: Column(
                         crossAxisAlignment: centerTitle
@@ -139,8 +162,9 @@ class EncabezadoPaginaAtlassian extends StatelessWidget {
                             title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            textAlign:
-                                centerTitle ? TextAlign.center : TextAlign.start,
+                            textAlign: centerTitle
+                                ? TextAlign.center
+                                : TextAlign.start,
                             style:
                                 (compact
                                         ? Theme.of(context).textTheme.titleLarge
@@ -167,11 +191,7 @@ class EncabezadoPaginaAtlassian extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (leading != null)
-                    Positioned(
-                      left: 0,
-                      child: leading!,
-                    ),
+                  if (leading != null) Positioned(left: 0, child: leading!),
                   if (actions.isNotEmpty)
                     Positioned(
                       right: 0,
@@ -266,7 +286,9 @@ class _EncabezadoSeccionAtlassianColapsableState
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          color: theme.scaffoldBackgroundColor.withValues(alpha: backgroundAlpha),
+          color: theme.scaffoldBackgroundColor.withValues(
+            alpha: backgroundAlpha,
+          ),
           child: SafeArea(
             bottom: false,
             child: Container(
@@ -275,7 +297,9 @@ class _EncabezadoSeccionAtlassianColapsableState
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: scheme.outlineVariant.withValues(alpha: backgroundAlpha),
+                    color: scheme.outlineVariant.withValues(
+                      alpha: backgroundAlpha,
+                    ),
                   ),
                 ),
               ),
@@ -299,8 +323,9 @@ class _EncabezadoSeccionAtlassianColapsableState
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.center,
-                                style: theme.textTheme.headlineSmall
-                                    ?.copyWith(fontWeight: FontWeight.w700),
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                               if (widget.subtitle != null &&
                                   widget.subtitle!.trim().isNotEmpty) ...[
@@ -359,10 +384,6 @@ class _EncabezadoSeccionAtlassianColapsableState
   }
 }
 
-
-
-
-
 class AccesoBusquedaAtlassian extends StatelessWidget {
   const AccesoBusquedaAtlassian({
     super.key,
@@ -374,59 +395,7 @@ class AccesoBusquedaAtlassian extends StatelessWidget {
   final String hintText;
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final searchBg = isDark
-        ? const Color(0xFF282C34)
-        : scheme.surface;
-    final searchBorder = isDark
-        ? const Color(0xFF3B404A)
-        : scheme.outlineVariant;
-
-    return Material(
-      color: searchBg,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(RadioAtlassian.pill),
-        side: BorderSide(color: searchBorder),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(RadioAtlassian.pill),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          child: Row(
-            children: [
-              Icon(
-                Icons.search_rounded,
-                size: 24,
-                color: isDark ? const Color(0xFF1E88E5) : const Color(0xFF0E5E86),
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Text(
-                  hintText,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Icon(
-                Icons.arrow_forward_rounded,
-                size: 21,
-                color: scheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => BarraBusquedaApp(onTap: onTap);
 }
 
 class BotonAtlassian extends StatelessWidget {
@@ -495,7 +464,13 @@ class BotonAtlassian extends StatelessWidget {
       );
     }
 
-    return expanded ? SizedBox(width: double.infinity, child: button) : button;
+    final animated = ToqueMovimientoApp(
+      habilitado: onPressed != null,
+      child: button,
+    );
+    return expanded
+        ? SizedBox(width: double.infinity, child: animated)
+        : animated;
   }
 }
 
@@ -647,9 +622,7 @@ class CampoBusquedaAtlassian extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final defaultBg = isDark
-        ? const Color(0xFF282C34)
-        : scheme.surface;
+    final defaultBg = isDark ? const Color(0xFF282C34) : scheme.surface;
     final borderColor = isDark
         ? const Color(0xFF3B404A)
         : scheme.outlineVariant;
@@ -839,7 +812,10 @@ class ControlSegmentadoAtlassian<T> extends StatelessWidget {
                   onTap: () => onChanged(segment.value),
                   borderRadius: BorderRadius.circular(RadioAtlassian.small),
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
+                    duration: MovimientoApp.duracion(
+                      context,
+                      MovimientoApp.respuesta,
+                    ),
                     curve: Curves.easeOutCubic,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -943,7 +919,9 @@ class TarjetaAccionAtlassian extends StatelessWidget {
                     height: compact ? 36 : 40,
                     decoration: BoxDecoration(
                       color: scheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(RadioAtlassian.medium),
+                      borderRadius: BorderRadius.circular(
+                        RadioAtlassian.medium,
+                      ),
                     ),
                     child: Icon(
                       icon,
@@ -1281,7 +1259,10 @@ class _DestinoNavegacionAtlassian extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
+              duration: MovimientoApp.duracion(
+                context,
+                MovimientoApp.respuesta,
+              ),
               width: 36,
               height: 28,
               decoration: BoxDecoration(
@@ -1333,7 +1314,7 @@ class NavegacionLateralAtlassian extends StatelessWidget {
     final width = hidden ? 0.0 : 180.0;
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
+      duration: MovimientoApp.duracion(context, MovimientoApp.respuesta),
       curve: Curves.easeInOut,
       width: width,
       child: ClipRect(
@@ -1362,9 +1343,16 @@ class NavegacionLateralAtlassian extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                const SizedBox(height: 56), // Espacio para el botón de menú flotante
+                                const SizedBox(
+                                  height: 56,
+                                ), // Espacio para el botón de menú flotante
                                 Padding(
-                                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    8,
+                                    4,
+                                    8,
+                                    16,
+                                  ),
                                   child: Row(
                                     children: [
                                       Container(
@@ -1385,25 +1373,26 @@ class NavegacionLateralAtlassian extends StatelessWidget {
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.center,
                                           children: [
                                             Text(
                                               'Trayectorias',
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               textAlign: TextAlign.center,
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .titleSmall,
+                                              style: Theme.of(
+                                                context,
+                                              ).textTheme.titleSmall,
                                             ),
                                             Text(
                                               saludoAtlassian(nombreEstudiante),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               textAlign: TextAlign.center,
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .labelSmall,
+                                              style: Theme.of(
+                                                context,
+                                              ).textTheme.labelSmall,
                                             ),
                                           ],
                                         ),
@@ -1413,7 +1402,10 @@ class NavegacionLateralAtlassian extends StatelessWidget {
                                 ),
                                 for (
                                   var index = 0;
-                                  index < BarraNavegacionAtlassian.destinations.length;
+                                  index <
+                                      BarraNavegacionAtlassian
+                                          .destinations
+                                          .length;
                                   index++
                                 ) ...[
                                   if (index == 4)
@@ -1425,12 +1417,16 @@ class NavegacionLateralAtlassian extends StatelessWidget {
                                           child: Tooltip(
                                             message: 'Acceso Administrador',
                                             child: InkWell(
-                                              borderRadius: BorderRadius.circular(RadioAtlassian.medium),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    RadioAtlassian.medium,
+                                                  ),
                                               onTap: () {
                                                 HapticFeedback.selectionClick();
                                                 Navigator.of(context).push(
                                                   MaterialPageRoute<void>(
-                                                    builder: (_) => const AccesoAdministradorPantalla(),
+                                                    builder: (_) =>
+                                                        const AccesoAdministradorPantalla(),
                                                   ),
                                                 );
                                               },
@@ -1439,11 +1435,16 @@ class NavegacionLateralAtlassian extends StatelessWidget {
                                                 height: 36,
                                                 alignment: Alignment.center,
                                                 decoration: BoxDecoration(
-                                                  color: scheme.primary.withValues(alpha: 0.12),
-                                                  borderRadius: BorderRadius.circular(RadioAtlassian.medium),
+                                                  color: scheme.primary
+                                                      .withValues(alpha: 0.12),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        RadioAtlassian.medium,
+                                                      ),
                                                 ),
                                                 child: Icon(
-                                                  Icons.admin_panel_settings_rounded,
+                                                  Icons
+                                                      .admin_panel_settings_rounded,
                                                   size: 18,
                                                   color: scheme.primary,
                                                 ),
@@ -1455,9 +1456,15 @@ class NavegacionLateralAtlassian extends StatelessWidget {
                                         Expanded(
                                           child: _DestinoLateralAtlassian(
                                             icon: selectedIndex == index
-                                                ? BarraNavegacionAtlassian.destinations[index].$2
-                                                : BarraNavegacionAtlassian.destinations[index].$1,
-                                            label: BarraNavegacionAtlassian.destinations[index].$3,
+                                                ? BarraNavegacionAtlassian
+                                                      .destinations[index]
+                                                      .$2
+                                                : BarraNavegacionAtlassian
+                                                      .destinations[index]
+                                                      .$1,
+                                            label: BarraNavegacionAtlassian
+                                                .destinations[index]
+                                                .$3,
                                             selected: selectedIndex == index,
                                             onTap: () => onSelected(index),
                                             collapsed: false,
@@ -1468,9 +1475,15 @@ class NavegacionLateralAtlassian extends StatelessWidget {
                                   else
                                     _DestinoLateralAtlassian(
                                       icon: selectedIndex == index
-                                          ? BarraNavegacionAtlassian.destinations[index].$2
-                                          : BarraNavegacionAtlassian.destinations[index].$1,
-                                      label: BarraNavegacionAtlassian.destinations[index].$3,
+                                          ? BarraNavegacionAtlassian
+                                                .destinations[index]
+                                                .$2
+                                          : BarraNavegacionAtlassian
+                                                .destinations[index]
+                                                .$1,
+                                      label: BarraNavegacionAtlassian
+                                          .destinations[index]
+                                          .$3,
                                       selected: selectedIndex == index,
                                       onTap: () => onSelected(index),
                                       collapsed: false,
@@ -1530,7 +1543,7 @@ class _DestinoLateralAtlassian extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(RadioAtlassian.medium),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
+          duration: MovimientoApp.duracion(context, MovimientoApp.respuesta),
           padding: EdgeInsets.symmetric(
             horizontal: collapsed ? 0 : 12,
             vertical: 10,
@@ -1606,32 +1619,15 @@ class SeparadorTituloAtlassian extends StatelessWidget {
   }
 }
 
-Route<T> rutaAtlassian<T>({
+PageRoute<T> rutaAtlassian<T>({
   required WidgetBuilder builder,
   RouteSettings? settings,
+  bool animarEntrada = true,
 }) {
-  return PageRouteBuilder<T>(
+  return RutaMovimientoApp<T>(
+    builder: builder,
     settings: settings,
-    transitionDuration: const Duration(milliseconds: 190),
-    reverseTransitionDuration: const Duration(milliseconds: 150),
-    pageBuilder: (context, animation, secondaryAnimation) => builder(context),
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0.035, 0),
-            end: Offset.zero,
-          ).animate(curved),
-          child: child,
-        ),
-      );
-    },
+    animarEntrada: animarEntrada,
   );
 }
 
@@ -1644,6 +1640,10 @@ Future<T?> mostrarHojaAtlassian<T>({
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
+    sheetAnimationStyle: AnimationStyle(
+      duration: MovimientoApp.duracion(context, MovimientoApp.ruta),
+      reverseDuration: MovimientoApp.duracion(context, MovimientoApp.salida),
+    ),
     builder: builder,
   );
 }

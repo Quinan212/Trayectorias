@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../compartido/movimiento/movimiento_app.dart';
+import '../../../compartido/tema/tema_herramientas_app.dart';
+
 import '../../trayectoria_sage_laboratorio/modelos/modelos_trayectoria_sage_laboratorio.dart';
+import '../componentes/componentes_academicos_app.dart';
 import '../componentes/componentes_atlassian.dart';
+import '../componentes/trayectoria_activa_atlassian.dart';
 import '../tema/tema_atlassian.dart';
 import 'utilidades_atlassian.dart';
 
@@ -37,10 +42,13 @@ class _PantallaDatosAtlassianState extends State<PantallaDatosAtlassian> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final headerHeight = MediaQuery.paddingOf(context).top + 72;
-    final header = EncabezadoSeccionAtlassianColapsable(
-      scrollController: _scrollController,
+  Widget build(BuildContext context) =>
+      TemaHerramientasApp(builder: _contenido);
+
+  Widget _contenido(BuildContext context) {
+    final headerHeight = alturaEncabezadoAcademicoAtlassian(context);
+    final header = EncabezadoAcademicoAtlassian(
+      controller: _scrollController,
       title: 'Datos',
       subtitle: 'Perfil y sincronización',
     );
@@ -53,42 +61,43 @@ class _PantallaDatosAtlassianState extends State<PantallaDatosAtlassian> {
           builder: (context, trajectory, _) {
             return Scaffold(
               backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-              body: Stack(
-                children: [
-                  Positioned.fill(
-                    child: !loaded
-                        ? const Center(child: CircularProgressIndicator())
-                        : trajectory == null
-                        ? Center(
-                            child: Padding(
-                              padding: EdgeInsets.only(top: headerHeight),
-                              child: EstadoVacioAtlassian(
-                                icon: Icons.person_off_outlined,
-                                title: 'Sin datos sincronizados',
-                                message:
-                                    'Conectá SAGE desde Inicio para cargar el perfil.',
-                                action: BotonAtlassian(
-                                  label: 'Ir a Inicio',
-                                  icon: Icons.home_rounded,
-                                  primary: true,
-                                  onPressed: () => widget.onNavigate(0),
+              body: SafeArea(
+                top: false,
+                minimum: const EdgeInsets.only(bottom: 8),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: !loaded
+                          ? const Center(child: CircularProgressIndicator())
+                          : trajectory == null
+                          ? Center(
+                              child: Padding(
+                                padding: EdgeInsets.only(top: headerHeight),
+                                child: EstadoVacioAtlassian(
+                                  icon: Icons.person_off_outlined,
+                                  title: 'Sin datos sincronizados',
+                                  message:
+                                      'Conectá SAGE desde Inicio para cargar el perfil.',
+                                  action: BotonAtlassian(
+                                    label: 'Ir a Inicio',
+                                    icon: Icons.home_rounded,
+                                    primary: true,
+                                    onPressed: () => widget.onNavigate(0),
+                                  ),
                                 ),
                               ),
+                            )
+                          : _ContenidoDatosAtlassian(
+                              trajectory: trajectory,
+                              selectedCareerListenable:
+                                  widget.selectedCareerListenable,
+                              onDesynchronize: widget.onDesynchronize,
+                              scrollController: _scrollController,
                             ),
-                          )
-                        : _ContenidoDatosAtlassian(
-                            trajectory: trajectory,
-                            selectedCareerListenable:
-                                widget.selectedCareerListenable,
-                            onDesynchronize: widget.onDesynchronize,
-                            scrollController: _scrollController,
-                          ),
-                  ),
-                  Align(
-                    alignment: Alignment.topCenter,
-                    child: header,
-                  ),
-                ],
+                    ),
+                    Align(alignment: Alignment.topCenter, child: header),
+                  ],
+                ),
               ),
             );
           },
@@ -127,16 +136,13 @@ class _ContenidoDatosAtlassian extends StatelessWidget {
     final profile = trajectory.perfil;
     final name = nombrePerfilAtlassian(profile);
     final fields = _camposPerfilPresentables(profile);
-    final headerHeight = MediaQuery.paddingOf(context).top + 72;
+    final headerHeight = alturaEncabezadoAcademicoAtlassian(context);
 
     return ListView(
+      key: const ValueKey('datos-contenido'),
       controller: scrollController,
-      padding: EdgeInsets.fromLTRB(
-        16,
-        headerHeight + 16,
-        16,
-        140 + MediaQuery.paddingOf(context).bottom,
-      ),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(16, headerHeight + 16, 16, 128),
       children: [
         PanelAtlassian(
           child: Row(
@@ -147,13 +153,13 @@ class _ContenidoDatosAtlassian extends StatelessWidget {
                 height: 52,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
+                  color: Theme.of(context).colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(RadioAtlassian.large),
                 ),
                 child: Text(
                   inicialesAtlassian(name),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -172,7 +178,7 @@ class _ContenidoDatosAtlassian extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 8),
-                    LozengeAtlassian(
+                    const EtiquetaAcademicaAtlassian(
                       label: 'Sincronizado',
                       appearance: AparienciaLozengeAtlassian.success,
                       icon: Icons.cloud_done_outlined,
@@ -207,7 +213,9 @@ class _ContenidoDatosAtlassian extends StatelessWidget {
         const SizedBox(height: 20),
         SeparadorTituloAtlassian(
           title: 'Carreras',
-          subtitle: '${trajectory.carreras.length} registradas',
+          subtitle: trajectory.carreras.length == 1
+              ? '1 registrada'
+              : '${trajectory.carreras.length} registradas',
         ),
         const SizedBox(height: 8),
         PanelAtlassian(
@@ -219,61 +227,64 @@ class _ContenidoDatosAtlassian extends StatelessWidget {
                 index < trajectory.carreras.length;
                 index++
               ) ...[
-                InkWell(
-                  onTap: () {
-                    selectedCareerListenable.value = index;
-                    _openCareer(context, trajectory.carreras[index]);
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 13,
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(
-                              RadioAtlassian.medium,
+                ToqueMovimientoApp(
+                  child: InkWell(
+                    onTap: () {
+                      selectedCareerListenable.value = index;
+                      _openCareer(context, trajectory.carreras[index]);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 13,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primaryContainer,
+                              borderRadius: BorderRadius.circular(
+                                RadioAtlassian.medium,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.school_outlined,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onPrimaryContainer,
+                              size: 21,
                             ),
                           ),
-                          child: Icon(
-                            Icons.school_outlined,
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : Theme.of(context).colorScheme.primary,
-                            size: 21,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                nombreCarreraAtlassian(
-                                  trajectory.carreras[index].nombre,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  nombreCarreraAtlassian(
+                                    trajectory.carreras[index].nombre,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleSmall,
                                 ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleSmall,
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                '${trajectory.carreras[index].materias.length} materias',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
+                                const SizedBox(height: 3),
+                                Text(
+                                  '${trajectory.carreras[index].materias.length} '
+                                  '${trajectory.carreras[index].materias.length == 1 ? 'materia' : 'materias'}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.chevron_right_rounded, size: 20),
-                      ],
+                          const SizedBox(width: 8),
+                          const Icon(Icons.chevron_right_rounded, size: 20),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -286,10 +297,11 @@ class _ContenidoDatosAtlassian extends StatelessWidget {
         const SizedBox(height: 20),
         const SeparadorTituloAtlassian(title: 'Almacenamiento local'),
         const SizedBox(height: 8),
-        MensajeSeccionAtlassian(
+        MensajeAcademicoAtlassian(
           title: 'Trayectoria guardada',
           message:
-              'La copia local contiene ${trajectory.totalMaterias} materias.',
+              'La copia local contiene ${trajectory.totalMaterias} '
+              '${trajectory.totalMaterias == 1 ? 'materia' : 'materias'}.',
           appearance: AparienciaLozengeAtlassian.brand,
           icon: Icons.storage_outlined,
           action: BotonAtlassian(
@@ -317,25 +329,25 @@ class _ResumenSincronizacionAtlassian extends StatelessWidget {
         final columns = constraints.maxWidth >= 720 ? 4 : 2;
         final width = (constraints.maxWidth - (columns - 1) * 10) / columns;
         final metrics = [
-          MetricaAtlassian(
+          MetricaAcademicaAtlassian(
             label: 'Carreras',
             value: '${trajectory.carreras.length}',
             icon: Icons.school_outlined,
             appearance: AparienciaLozengeAtlassian.brand,
           ),
-          MetricaAtlassian(
+          MetricaAcademicaAtlassian(
             label: 'Materias',
             value: '${trajectory.totalMaterias}',
             icon: Icons.menu_book_outlined,
             appearance: AparienciaLozengeAtlassian.neutral,
           ),
-          MetricaAtlassian(
+          _MetricaFechaDatosAtlassian(
             label: 'Capturada',
             value: formatoFechaAtlassian(trajectory.capturadaEn),
             icon: Icons.history_rounded,
             appearance: AparienciaLozengeAtlassian.discovery,
           ),
-          MetricaAtlassian(
+          _MetricaFechaDatosAtlassian(
             label: 'Sincronizada',
             value: textoSincronizacionAtlassian(trajectory.sincronizadaEn),
             icon: Icons.cloud_done_outlined,
@@ -354,30 +366,43 @@ class _ResumenSincronizacionAtlassian extends StatelessWidget {
   }
 }
 
+class _MetricaFechaDatosAtlassian extends StatelessWidget {
+  const _MetricaFechaDatosAtlassian({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.appearance,
+  });
+  final String label;
+  final String value;
+  final IconData icon;
+  final AparienciaLozengeAtlassian appearance;
+
+  @override
+  Widget build(BuildContext context) => PanelAtlassian(
+    ordenEntrada: 2,
+    padding: const EdgeInsets.all(14),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: Theme.of(context).colorScheme.primary, size: 22),
+        const SizedBox(height: 10),
+        Text(value, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    ),
+  );
+}
+
 class _FilaDatoAtlassian extends StatelessWidget {
   const _FilaDatoAtlassian({required this.label, required this.value});
-
   final String label;
   final String value;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(label, style: Theme.of(context).textTheme.labelMedium),
-          ),
-          Expanded(
-            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      FilaDatoAcademicoAtlassian(label: label, value: value);
 }
 
 class PantallaDetalleCarreraAtlassian extends StatelessWidget {
@@ -386,106 +411,140 @@ class PantallaDetalleCarreraAtlassian extends StatelessWidget {
   final CarreraTrayectoriaSageLaboratorio career;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      TemaHerramientasApp(builder: _contenido);
+
+  Widget _contenido(BuildContext context) {
+    final activa = TrayectoriaActivaAtlassian.de(context);
+    final career = activa == null
+        ? this.career
+        : activa.buscarCarrera(this.career);
+    if (career == null) {
+      return Scaffold(
+        body: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.only(bottom: 8),
+          child: Column(
+            children: [
+              EncabezadoPaginaAtlassian(
+                title: 'Datos de carrera',
+                leading: BotonIconoAtlassian(
+                  icon: Icons.arrow_back_rounded,
+                  tooltip: 'Volver',
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+              const Expanded(
+                child: EstadoVacioAtlassian(
+                  icon: Icons.sync_rounded,
+                  title: 'Carrera no disponible',
+                  message:
+                      'Esta carrera ya no está en la trayectoria sincronizada.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Column(
-        children: [
-          EncabezadoPaginaAtlassian(
-            title: 'Datos de carrera',
-            subtitle: nombreCarreraAtlassian(career.nombre),
-            leading: BotonIconoAtlassian(
-              icon: Icons.arrow_back_rounded,
-              tooltip: 'Volver',
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                120 + MediaQuery.paddingOf(context).bottom,
+      body: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          children: [
+            EncabezadoPaginaAtlassian(
+              title: 'Datos de carrera',
+              subtitle: nombreCarreraAtlassian(career.nombre),
+              leading: BotonIconoAtlassian(
+                icon: Icons.arrow_back_rounded,
+                tooltip: 'Volver',
+                onPressed: () => Navigator.of(context).pop(),
               ),
-              children: [
-                PanelAtlassian(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      LozengeAtlassian(
-                        label: career.estado ?? 'Carrera',
-                        appearance: AparienciaLozengeAtlassian.brand,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        nombreCarreraAtlassian(career.nombre),
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      if (career.institucion.trim().isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          career.institucion,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                PanelAtlassian(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      _FilaDatoAtlassian(
-                        label: 'Materias',
-                        value: '${career.materias.length}',
-                      ),
-                      const Divider(height: 1),
-                      _FilaDatoAtlassian(
-                        label: 'Aprobadas',
-                        value: '${career.aprobadas}',
-                      ),
-                      const Divider(height: 1),
-                      _FilaDatoAtlassian(
-                        label: 'Regulares',
-                        value: '${career.regulares}',
-                      ),
-                      const Divider(height: 1),
-                      _FilaDatoAtlassian(
-                        label: 'Cursando',
-                        value: '${career.cursando}',
-                      ),
-                      if (career.anioInicio != null) ...[
-                        const Divider(height: 1),
-                        _FilaDatoAtlassian(
-                          label: 'Inicio',
-                          value: '${career.anioInicio}',
-                        ),
-                      ],
-                      if ((career.estadoInscripcion ?? '')
-                          .trim()
-                          .isNotEmpty) ...[
-                        const Divider(height: 1),
-                        _FilaDatoAtlassian(
-                          label: 'Inscripción',
-                          value: career.estadoInscripcion!,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 48),
-              ],
             ),
-          ),
-        ],
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 24),
+                children: [
+                  PanelAtlassian(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        EtiquetaAcademicaAtlassian(
+                          label: career.estado ?? 'Carrera',
+                          appearance: AparienciaLozengeAtlassian.brand,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          nombreCarreraAtlassian(career.nombre),
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        if (career.institucion.trim().isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            career.institucion,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  PanelAtlassian(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        _FilaDatoAtlassian(
+                          label: 'Materias',
+                          value: '${career.materias.length}',
+                        ),
+                        const Divider(height: 1),
+                        _FilaDatoAtlassian(
+                          label: 'Aprobadas',
+                          value: '${career.aprobadas}',
+                        ),
+                        const Divider(height: 1),
+                        _FilaDatoAtlassian(
+                          label: 'Regulares',
+                          value: '${career.regulares}',
+                        ),
+                        const Divider(height: 1),
+                        _FilaDatoAtlassian(
+                          label: 'Cursando',
+                          value: '${career.cursando}',
+                        ),
+                        if (career.anioInicio != null) ...[
+                          const Divider(height: 1),
+                          _FilaDatoAtlassian(
+                            label: 'Inicio',
+                            value: '${career.anioInicio}',
+                          ),
+                        ],
+                        if ((career.estadoInscripcion ?? '')
+                            .trim()
+                            .isNotEmpty) ...[
+                          const Divider(height: 1),
+                          _FilaDatoAtlassian(
+                            label: 'Inscripción',
+                            value: career.estadoInscripcion!,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 48),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

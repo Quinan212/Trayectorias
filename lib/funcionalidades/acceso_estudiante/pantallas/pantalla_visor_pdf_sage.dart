@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../laboratorio_atlassian/componentes/componentes_atlassian.dart';
 import '../../laboratorio_atlassian/tema/tema_atlassian.dart';
 import '../../laboratorio_atlassian/tema/tema_react_developer.dart';
+import '../../trayectoria_sage_laboratorio/datos/repositorio_documentos_academicos_sage.dart';
 import '../../trayectoria_sage_laboratorio/documentos_pdf/extractor_documento_academico_pdf.dart';
 import '../../trayectoria_sage_laboratorio/documentos_pdf/modelos_documento_academico_pdf.dart';
 import '../../trayectoria_sage_laboratorio/documentos_pdf/vista_documento_academico_nativo.dart';
@@ -22,9 +23,13 @@ class PantallaVisorPdfSage extends StatefulWidget {
     super.key,
     required this.rutaArchivo,
     required this.nombreArchivo,
+    this.copiaLocal,
+    this.onActualizar,
   });
 
-  final String rutaArchivo;
+  final String? rutaArchivo;
+  final CopiaDocumentoAcademicoSage? copiaLocal;
+  final Future<CopiaDocumentoAcademicoSage?> Function()? onActualizar;
   final String nombreArchivo;
 
   @override
@@ -38,15 +43,24 @@ class _PantallaVisorPdfSageState extends State<PantallaVisorPdfSage> {
   PdfControllerPinch? _pdfController;
   bool _mostrarPdfOriginal = false;
   double _topBlurProgress = 0;
+  CopiaDocumentoAcademicoSage? _copia;
+  bool _actualizando = false;
+  String? get _rutaArchivo =>
+      _copia?.archivo?.path ?? (_copia == null ? widget.rutaArchivo : null);
 
   @override
   void initState() {
     super.initState();
+    _copia = widget.copiaLocal;
     _documentoNativoFuture = _cargarDocumentoNativo();
   }
 
   Future<File> _archivoValidado() async {
-    final file = File(widget.rutaArchivo);
+    final ruta = _rutaArchivo;
+    if (ruta == null) {
+      throw const FormatException('No hay una copia PDF disponible.');
+    }
+    final file = File(ruta);
     if (!await file.exists()) {
       throw const FormatException('Archivo no disponible.');
     }
@@ -71,6 +85,7 @@ class _PantallaVisorPdfSageState extends State<PantallaVisorPdfSage> {
   }
 
   Future<DocumentoAcademicoPdf?> _cargarDocumentoNativo() async {
+    if (_copia?.nativo != null) return _copia!.nativo;
     final file = await _archivoValidado();
     final length = await file.length();
     // ponytail: los reportes SAGE son pequeños; un PDF general grande conserva
@@ -127,7 +142,9 @@ class _PantallaVisorPdfSageState extends State<PantallaVisorPdfSage> {
   }
 
   Future<void> _share() async {
-    final file = File(widget.rutaArchivo);
+    final ruta = _rutaArchivo;
+    if (ruta == null) return;
+    final file = File(ruta);
     if (!await file.exists() || !mounted) return;
     try {
       await SharePlus.instance.share(
@@ -143,11 +160,51 @@ class _PantallaVisorPdfSageState extends State<PantallaVisorPdfSage> {
   }
 
   Future<void> _openExternally() async {
-    final result = await OpenFilex.open(widget.rutaArchivo);
+    final ruta = _rutaArchivo;
+    if (ruta == null) return;
+    final result = await OpenFilex.open(ruta);
     if (result.type != ResultType.done && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No hay un visor de PDF disponible.')),
       );
+    }
+  }
+
+  Future<void> _actualizar() async {
+    final actualizar = widget.onActualizar;
+    if (actualizar == null || _actualizando) return;
+    setState(() => _actualizando = true);
+    try {
+      final nueva = await actualizar();
+      if (!mounted) return;
+      if (nueva == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Actualización cancelada. La copia guardada sigue disponible.',
+            ),
+          ),
+        );
+        return;
+      }
+      _pdfController?.dispose();
+      _pdfController = null;
+      setState(() {
+        _copia = nueva;
+        _documentoNativoFuture = _cargarDocumentoNativo();
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se pudo actualizar. La copia guardada sigue disponible.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _actualizando = false);
     }
   }
 
@@ -207,9 +264,7 @@ class _PantallaVisorPdfSageState extends State<PantallaVisorPdfSage> {
           future: _documentoNativoFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
-              return const _PantallaPreparandoDocumento(
-                title: 'SAGE',
-              );
+              return const _PantallaPreparandoDocumento(title: 'SAGE');
             }
             if (snapshot.hasError) {
               return _PantallaErrorDocumento(
@@ -279,10 +334,7 @@ class _PantallaVisorPdfSageState extends State<PantallaVisorPdfSage> {
                           },
                           blendMode: BlendMode.dstIn,
                           child: BackdropFilter(
-                            filter: ui.ImageFilter.blur(
-                              sigmaX: 16,
-                              sigmaY: 16,
-                            ),
+                            filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                             child: Container(
                               height: MediaQuery.paddingOf(context).top + 60,
                               decoration: BoxDecoration(
@@ -290,18 +342,10 @@ class _PantallaVisorPdfSageState extends State<PantallaVisorPdfSage> {
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    reactTheme.canvas.withValues(
-                                      alpha: 0.98,
-                                    ),
-                                    reactTheme.canvas.withValues(
-                                      alpha: 0.80,
-                                    ),
-                                    reactTheme.canvas.withValues(
-                                      alpha: 0.40,
-                                    ),
-                                    reactTheme.canvas.withValues(
-                                      alpha: 0,
-                                    ),
+                                    reactTheme.canvas.withValues(alpha: 0.98),
+                                    reactTheme.canvas.withValues(alpha: 0.80),
+                                    reactTheme.canvas.withValues(alpha: 0.40),
+                                    reactTheme.canvas.withValues(alpha: 0),
                                   ],
                                   stops: const [0.0, 0.35, 0.70, 1.0],
                                 ),
@@ -353,7 +397,7 @@ class _PantallaVisorPdfSageState extends State<PantallaVisorPdfSage> {
         ],
       ),
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.only(top: 32),
+        padding: const EdgeInsets.only(top: 24),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -374,6 +418,11 @@ class _PantallaVisorPdfSageState extends State<PantallaVisorPdfSage> {
             onVerPdfOriginal: _showOriginalPdf,
             onAbrirExternamente: () => unawaited(_openExternally()),
             reduceMotion: reduceMotion,
+            onActualizar: widget.onActualizar == null
+                ? null
+                : () => unawaited(_actualizar()),
+            actualizando: _actualizando,
+            pdfDisponible: _rutaArchivo != null,
           ),
         ),
       ),
@@ -425,6 +474,18 @@ class _PantallaVisorPdfSageState extends State<PantallaVisorPdfSage> {
           ),
         ],
       ),
+      bottomNavigationBar: widget.onActualizar == null
+          ? null
+          : SafeArea(
+              minimum: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+              child: FilledButton.icon(
+                onPressed: _actualizando
+                    ? null
+                    : () => unawaited(_actualizar()),
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(_actualizando ? 'Actualizando…' : 'Actualizar'),
+              ),
+            ),
       body: PdfViewPinch(
         controller: _asegurarPdfController(),
         backgroundDecoration: BoxDecoration(color: scheme.surface),
@@ -466,11 +527,7 @@ class _OpcionMenuDocumento extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: [
-        Icon(icon, size: 20),
-        const SizedBox(width: 12),
-        Text(label),
-      ],
+      children: [Icon(icon, size: 20), const SizedBox(width: 12), Text(label)],
     );
   }
 }

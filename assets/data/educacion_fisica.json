@@ -1,0 +1,781 @@
+{
+  "materias": [
+    {
+      "id": "pedagogia",
+      "codigo": "PED",
+      "nombre": "Pedagogía",
+      "anio": 1,
+      "tipo": "Formación General",
+      "formato": "Asignatura",
+      "horas": "4 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "corporeidad",
+      "codigo": "CJA",
+      "nombre": "Corporeidad, Juego y Lenguajes Artísticos",
+      "anio": 1,
+      "tipo": "Formación General",
+      "formato": "Taller",
+      "horas": "3 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "psicologia",
+      "codigo": "PE",
+      "nombre": "Psicología Educacional",
+      "anio": 1,
+      "tipo": "Formación General",
+      "formato": "Asignatura",
+      "horas": "4 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "oralidad",
+      "codigo": "OLT",
+      "nombre": "Oralidad, Lectura, Escritura y TIC",
+      "anio": 1,
+      "tipo": "Formación General",
+      "formato": "Taller",
+      "horas": "3 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "biologia",
+      "codigo": "BIO",
+      "nombre": "Biología Humana",
+      "anio": 1,
+      "tipo": "Formación Específica",
+      "formato": "Asignatura",
+      "horas": "3 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "prac-ludomotrices",
+      "codigo": "PL",
+      "nombre": "Prácticas Ludomotrices",
+      "anio": 1,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "3 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "prac-gim-1",
+      "codigo": "PGE1",
+      "nombre": "Prácticas Gimnásticas y Expresivas I",
+      "anio": 1,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "4 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "prac-atletismo",
+      "codigo": "PDI",
+      "nombre": "Prácticas Dep. Indiv: Atletismo",
+      "anio": 1,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "4 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "prac-acuaticas-1",
+      "codigo": "PA1",
+      "nombre": "Prácticas Acuáticas I",
+      "anio": 1,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "3 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "practica-1",
+      "codigo": "PD1",
+      "nombre": "Prácticas Docentes I",
+      "anio": 1,
+      "tipo": "Práctica Profesional",
+      "formato": "Práctica Docente",
+      "horas": "4 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "filosofia",
+      "codigo": "FIL",
+      "nombre": "Filosofía",
+      "anio": 2,
+      "tipo": "Formación General",
+      "formato": "Asignatura",
+      "horas": "3 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "didactica",
+      "codigo": "DG",
+      "nombre": "Didáctica General",
+      "anio": 2,
+      "tipo": "Formación General",
+      "formato": "Asignatura",
+      "horas": "4 hs",
+      "correlativas": [
+        "pedagogia",
+        "psicologia"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "pedagogia",
+          "type": "R"
+        },
+        {
+          "id": "psicologia",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "hist-soc",
+      "codigo": "HSP",
+      "nombre": "Hist. Soc. y Pol. Arg. y Latinoamericana",
+      "anio": 2,
+      "tipo": "Formación General",
+      "formato": "Asignatura",
+      "horas": "3 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "biomotricidad-1",
+      "codigo": "BIO1",
+      "nombre": "Biomotricidad I",
+      "anio": 2,
+      "tipo": "Formación Específica",
+      "formato": "Asignatura",
+      "horas": "3 hs",
+      "correlativas": [
+        "corporeidad",
+        "biologia"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "corporeidad",
+          "type": "R"
+        },
+        {
+          "id": "biologia",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "id": "sujetos",
+      "codigo": "SE",
+      "nombre": "Sujetos de la Educación",
+      "anio": 2,
+      "tipo": "Formación General",
+      "formato": "Asignatura",
+      "horas": "3 hs",
+      "correlativas": [
+        "pedagogia",
+        "psicologia"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "pedagogia",
+          "type": "R"
+        },
+        {
+          "id": "psicologia",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "id": "prac-gim-2",
+      "codigo": "PGE2",
+      "nombre": "Prácticas Gimnásticas y Expresivas II",
+      "anio": 2,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "4 hs",
+      "correlativas": [
+        "prac-gim-1",
+        "corporeidad"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "prac-gim-1",
+          "type": "A"
+        },
+        {
+          "id": "corporeidad",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "id": "prac-conjunto-1",
+      "codigo": "PDC1",
+      "nombre": "Prácticas Deportivas de Conjunto I",
+      "anio": 2,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "4 hs",
+      "correlativas": [
+        "prac-ludomotrices"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "prac-ludomotrices",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "prac-acuaticas-2",
+      "codigo": "PA2",
+      "nombre": "Prácticas Acuáticas II",
+      "anio": 2,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "3 hs",
+      "correlativas": [
+        "prac-acuaticas-1"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "prac-acuaticas-1",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "didactica-ef-1",
+      "codigo": "DEF1",
+      "nombre": "Didáctica de la Educación Física I",
+      "anio": 2,
+      "tipo": "Formación Específica",
+      "formato": "Asignatura",
+      "horas": "4 hs",
+      "correlativas": [
+        "pedagogia",
+        "psicologia",
+        "prac-ludomotrices"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "pedagogia",
+          "type": "A"
+        },
+        {
+          "id": "psicologia",
+          "type": "A"
+        },
+        {
+          "id": "prac-ludomotrices",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "practica-2",
+      "codigo": "PD2",
+      "nombre": "Prácticas Docentes II",
+      "anio": 2,
+      "tipo": "Práctica Profesional",
+      "formato": "Práctica Docente",
+      "horas": "4 hs",
+      "correlativas": [
+        "pedagogia",
+        "oralidad",
+        "corporeidad"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "pedagogia",
+          "type": "A"
+        },
+        {
+          "id": "oralidad",
+          "type": "R"
+        },
+        {
+          "id": "corporeidad",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "id": "hist-pol-ed",
+      "codigo": "HPE",
+      "nombre": "Hist. y Pol. de la Educación Argentina",
+      "anio": 3,
+      "tipo": "Formación General",
+      "formato": "Asignatura",
+      "horas": "3 hs",
+      "correlativas": [
+        "psicologia",
+        "prac-ludomotrices",
+        "practica-1",
+        "hist-soc"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "psicologia",
+          "type": "A"
+        },
+        {
+          "id": "prac-ludomotrices",
+          "type": "A"
+        },
+        {
+          "id": "practica-1",
+          "type": "A"
+        },
+        {
+          "id": "hist-soc",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "sociologia",
+      "codigo": "SOE",
+      "nombre": "Sociología de la Educación",
+      "anio": 3,
+      "tipo": "Formación General",
+      "formato": "Asignatura",
+      "horas": "3 hs",
+      "correlativas": [
+        "pedagogia"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "pedagogia",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "esi",
+      "codigo": "ESI",
+      "nombre": "Educación Sexual Integral",
+      "anio": 3,
+      "tipo": "Formación General",
+      "formato": "Taller",
+      "horas": "2 hs",
+      "correlativas": [
+        "corporeidad",
+        "sujetos",
+        "didactica"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "corporeidad",
+          "type": "A"
+        },
+        {
+          "id": "sujetos",
+          "type": "R"
+        },
+        {
+          "id": "didactica",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "id": "biomotricidad-2",
+      "codigo": "BIO2",
+      "nombre": "Biomotricidad II",
+      "anio": 3,
+      "tipo": "Formación Específica",
+      "formato": "Asignatura",
+      "horas": "3 hs",
+      "correlativas": [
+        "biomotricidad-1"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "biomotricidad-1",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "recreacion",
+      "codigo": "RTL",
+      "nombre": "Recreación y Tiempo Libre",
+      "anio": 3,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "3 hs",
+      "correlativas": [
+        "prac-ludomotrices",
+        "biomotricidad-1"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "prac-ludomotrices",
+          "type": "A"
+        },
+        {
+          "id": "biomotricidad-1",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "id": "inclusion",
+      "codigo": "EIN",
+      "nombre": "Educación Inclusiva",
+      "anio": 3,
+      "tipo": "Formación Específica",
+      "formato": "Seminario",
+      "horas": "3 hs",
+      "correlativas": [
+        "corporeidad",
+        "prac-ludomotrices",
+        "didactica",
+        "sujetos",
+        "didactica-ef-1"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "corporeidad",
+          "type": "A"
+        },
+        {
+          "id": "prac-ludomotrices",
+          "type": "R"
+        },
+        {
+          "id": "didactica",
+          "type": "A"
+        },
+        {
+          "id": "sujetos",
+          "type": "A"
+        },
+        {
+          "id": "didactica-ef-1",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "prac-conjunto-2",
+      "codigo": "PDC2",
+      "nombre": "Prácticas Deportivas de Conjunto II",
+      "anio": 3,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "4 hs",
+      "correlativas": [
+        "prac-conjunto-1"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "prac-conjunto-1",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "didactica-ef-2",
+      "codigo": "DEF2",
+      "nombre": "Didáctica de la Educación Física II",
+      "anio": 3,
+      "tipo": "Formación Específica",
+      "formato": "Asignatura",
+      "horas": "4 hs",
+      "correlativas": [
+        "didactica",
+        "sujetos",
+        "didactica-ef-1"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "didactica",
+          "type": "A"
+        },
+        {
+          "id": "sujetos",
+          "type": "R"
+        },
+        {
+          "id": "didactica-ef-1",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "practica-3",
+      "codigo": "PD3",
+      "nombre": "Prácticas Docentes III",
+      "anio": 3,
+      "tipo": "Práctica Profesional",
+      "formato": "Práctica Docente",
+      "horas": "6 hs",
+      "correlativas": [
+        "didactica",
+        "biomotricidad-1"
+      ],
+      "correlativasDetalladas": [
+        {
+          "isSpecial": true,
+          "nombre": "Todas las UC de 1° Año",
+          "type": "A"
+        },
+        {
+          "id": "didactica",
+          "type": "A"
+        },
+        {
+          "id": "biomotricidad-1",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "udi-1",
+      "codigo": "UDI1",
+      "nombre": "Unidad de Definición Institucional",
+      "anio": 3,
+      "tipo": "Formación Específica",
+      "formato": "Variable",
+      "horas": "3 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "instituciones",
+      "codigo": "IE",
+      "nombre": "Análisis y Org. de las Inst. Educativas",
+      "anio": 4,
+      "tipo": "Formación General",
+      "formato": "Seminario",
+      "horas": "3 hs",
+      "correlativas": [
+        "sociologia",
+        "inclusion",
+        "practica-3"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "sociologia",
+          "type": "A"
+        },
+        {
+          "id": "inclusion",
+          "type": "R"
+        },
+        {
+          "id": "practica-3",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "ddhh",
+      "codigo": "DHU",
+      "nombre": "Derechos Humanos: Ética y Ciudadanía",
+      "anio": 4,
+      "tipo": "Formación General",
+      "formato": "Asignatura",
+      "horas": "3 hs",
+      "correlativas": [
+        "filosofia",
+        "hist-soc",
+        "sociologia",
+        "inclusion"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "filosofia",
+          "type": "A"
+        },
+        {
+          "id": "hist-soc",
+          "type": "A"
+        },
+        {
+          "id": "sociologia",
+          "type": "R"
+        },
+        {
+          "id": "inclusion",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "actividad-fisica",
+      "codigo": "AFS",
+      "nombre": "Actividad Física y Salud",
+      "anio": 4,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "3 hs",
+      "correlativas": [
+        "prac-gim-2",
+        "biomotricidad-2"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "prac-gim-2",
+          "type": "A"
+        },
+        {
+          "id": "biomotricidad-2",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "prac-ambientes",
+      "codigo": "PAN",
+      "nombre": "Prácticas en Ambientes Naturales",
+      "anio": 4,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "3 hs",
+      "correlativas": [
+        "recreacion"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "recreacion",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "epistemologia",
+      "codigo": "EP",
+      "nombre": "Epistemología y Prob. Contemp. de la EF",
+      "anio": 4,
+      "tipo": "Formación Específica",
+      "formato": "Seminario",
+      "horas": "3 hs",
+      "correlativas": [
+        "filosofia",
+        "biomotricidad-2",
+        "inclusion",
+        "esi"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "filosofia",
+          "type": "A"
+        },
+        {
+          "id": "biomotricidad-2",
+          "type": "R"
+        },
+        {
+          "id": "inclusion",
+          "type": "R"
+        },
+        {
+          "id": "esi",
+          "type": "R"
+        }
+      ]
+    },
+    {
+      "id": "prac-conjunto-3",
+      "codigo": "PDC3",
+      "nombre": "Prácticas Deportivas de Conjunto III",
+      "anio": 4,
+      "tipo": "Formación Específica",
+      "formato": "Taller",
+      "horas": "3 hs",
+      "correlativas": [
+        "prac-conjunto-2"
+      ],
+      "correlativasDetalladas": [
+        {
+          "id": "prac-conjunto-2",
+          "type": "A"
+        }
+      ]
+    },
+    {
+      "id": "udi-2",
+      "codigo": "UDI2",
+      "nombre": "Unidad de Definición Institucional",
+      "anio": 4,
+      "tipo": "Formación Específica",
+      "formato": "Variable",
+      "horas": "3 hs",
+      "correlativas": [],
+      "correlativasDetalladas": []
+    },
+    {
+      "id": "residencia",
+      "codigo": "RES",
+      "nombre": "Práctica Docente IV (Residencia)",
+      "anio": 4,
+      "tipo": "Práctica Profesional",
+      "formato": "Residencia",
+      "horas": "8 hs",
+      "correlativas": [
+        "esi",
+        "sociologia",
+        "recreacion",
+        "inclusion",
+        "prac-conjunto-2",
+        "didactica-ef-2",
+        "practica-3"
+      ],
+      "correlativasDetalladas": [
+        {
+          "isSpecial": true,
+          "nombre": "Todas las UC de 1° y 2° Año",
+          "type": "A"
+        },
+        {
+          "id": "esi",
+          "type": "A"
+        },
+        {
+          "id": "sociologia",
+          "type": "R"
+        },
+        {
+          "id": "recreacion",
+          "type": "A"
+        },
+        {
+          "id": "inclusion",
+          "type": "A"
+        },
+        {
+          "id": "prac-conjunto-2",
+          "type": "A"
+        },
+        {
+          "id": "didactica-ef-2",
+          "type": "A"
+        },
+        {
+          "id": "practica-3",
+          "type": "A"
+        }
+      ]
+    }
+  ],
+  "pdfUrl": "https://iseef-ers.infd.edu.ar/sitio/wp-content/uploads/2025/11/0979-17_CGE_Aprueba_Disen_o_Curricular_Profesorado_de_Educacion_Fisica.pdf"
+}

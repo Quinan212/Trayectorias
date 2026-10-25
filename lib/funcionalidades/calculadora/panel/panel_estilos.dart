@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../pantalla/tema/estilos_calculadora.dart';
+
 class EstilosPanel {
   static bool isDark(BuildContext c) =>
       Theme.of(c).brightness == Brightness.dark;
@@ -23,7 +25,7 @@ class EstilosPanel {
 
   static Color border(BuildContext c) {
     final cs = Theme.of(c).colorScheme;
-    return isDark(c) ? cs.outlineVariant : const Color(0xFFE5E7EB);
+    return isDark(c) ? cs.outlineVariant : EstilosCalculadora.kBordeClaro;
   }
 
   static Color titleColor(BuildContext c) {
@@ -33,17 +35,15 @@ class EstilosPanel {
 
   static Color subtitleColor(BuildContext c) {
     final cs = Theme.of(c).colorScheme;
-    return isDark(c) ? cs.onSurfaceVariant : const Color(0xFF6B7280);
+    return isDark(c) ? cs.onSurfaceVariant : const Color(0xFF44546F);
   }
 
   static Color chipBg(BuildContext c) {
-    final cs = Theme.of(c).colorScheme;
-    return isDark(c) ? darken(cs.surface, 0.30) : const Color(0xFFF3F4F6);
+    return isDark(c) ? const Color(0xFF111317) : const Color(0xFFF1F4F8);
   }
 
   static Color chipSelectedBg(BuildContext c) {
-    final cs = Theme.of(c).colorScheme;
-    return isDark(c) ? darken(cs.primary, 0.72) : const Color(0xFFDBEAFE);
+    return isDark(c) ? const Color(0xFF223761) : const Color(0xFFDBEAFE);
   }
 
   static Color chipFg(BuildContext c) {
@@ -52,12 +52,13 @@ class EstilosPanel {
   }
 
   static Color chipSelectedFg(BuildContext c) {
-    final cs = Theme.of(c).colorScheme;
-    return isDark(c) ? cs.onSurface : const Color(0xFF1D4ED8);
+    return isDark(c) ? const Color(0xFFDDEAFF) : const Color(0xFF173D8F);
   }
 
   static BorderSide chipSide(BuildContext c, {required bool selected}) {
-    if (selected) return const BorderSide(color: Color(0xFF93C5FD));
+    if (selected) {
+      return BorderSide(color: Theme.of(c).colorScheme.primary, width: 1.5);
+    }
     return BorderSide(color: border(c));
   }
 
@@ -87,13 +88,14 @@ class EstilosPanel {
           decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
         ),
         const SizedBox(width: 10),
-        Text(
-          title,
-          style: gf(
-            size: 14.5,
-            weight: FontWeight.w600,
-            color: titleColor(context),
-            height: 1.0,
+        Expanded(
+          child: Text(
+            title,
+            style: gf(
+              size: 14.5,
+              weight: FontWeight.w600,
+              color: titleColor(context),
+            ),
           ),
         ),
       ],
@@ -102,16 +104,12 @@ class EstilosPanel {
 
   static Widget panelCard(BuildContext context, Widget child) {
     final cs = Theme.of(context).colorScheme;
-    final dark = isDark(context);
-
     return Container(
       decoration: BoxDecoration(
-        color: dark ? darken(cs.surface) : Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: border(context)),
-        boxShadow: const [
-          BoxShadow(blurRadius: 10, color: Color(0x14000000)),
-        ],
+        boxShadow: const [BoxShadow(blurRadius: 10, color: Color(0x14000000))],
       ),
       padding: const EdgeInsets.all(16),
       child: child,

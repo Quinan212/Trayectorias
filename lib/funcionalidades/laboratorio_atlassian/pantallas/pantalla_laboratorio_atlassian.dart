@@ -1,16 +1,17 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../compartido/movimiento/movimiento_app.dart';
+import '../../../compartido/navegacion/barra_busqueda_app.dart';
 import '../../administrador/pantallas/acceso_administrador_pantalla.dart';
 import '../../trayectoria_sage_laboratorio/datos/repositorio_estado_sincronizacion_sage.dart';
 import '../../trayectoria_sage_laboratorio/datos/repositorio_trayectoria_sage_laboratorio.dart';
 import '../../trayectoria_sage_laboratorio/modelos/modelos_trayectoria_sage_laboratorio.dart';
 import '../busqueda/modelos_busqueda_atlassian.dart';
-import '../busqueda/pantalla_busqueda_global_atlassian.dart';
 import '../busqueda/pantalla_busqueda_global_react_developer.dart';
 import '../componentes/componentes_atlassian.dart';
+import '../componentes/trayectoria_activa_atlassian.dart';
 import '../tema/tema_atlassian.dart';
 import 'pantalla_calendario_atlassian.dart';
 import 'pantalla_datos_atlassian.dart';
@@ -56,10 +57,19 @@ class _PantallaLaboratorioAtlassianState
   final ValueNotifier<SolicitudInicioAtlassian?> _homeRequest =
       ValueNotifier<SolicitudInicioAtlassian?>(null);
   final Set<int> _builtSections = <int>{0};
+  late final Listenable _trajectoryChanges = Listenable.merge([
+    _trajectory,
+    _selectedCareer,
+  ]);
+  bool _resolvingSearch = false;
+  bool _searchOpen = false;
+  int _searchRevision = 0;
+  ({int origen, int destino})? _searchReturn;
+  PageRoute<void>? _searchReturnRoute;
 
   int _section = 0;
   bool _sidebarHidden = false;
-  double _topBlurProgress = 0.0;
+  final ValueNotifier<double> _topBlurProgress = ValueNotifier(0);
 
   void _handleSectionRouteChanged() {
     if (!mounted) return;
@@ -157,50 +167,104 @@ class _PantallaLaboratorioAtlassianState
     setState(() {
       _builtSections.add(section);
       _section = section;
-      _topBlurProgress = 0.0;
+      _topBlurProgress.value = 0;
     });
   }
 
   void _selectSection(int section) {
+    _searchReturn = null;
+    _searchReturnRoute = null;
     if (_section == section) {
       _navigatorKeys[section].currentState?.popUntil((route) => route.isFirst);
       return;
     }
+    final firstVisit = !_builtSections.contains(section);
     _activateSection(section);
+    final career = _currentTrajectoryCareer();
+    if (firstVisit && career != null) {
+      final careerId = idCarreraExamenAtlassian(career.nombre);
+      if (section == 1) {
+        _examRequest.value = SolicitudExamenesAtlassian(careerId: careerId);
+      } else if (section == 2) {
+        _planRequest.value = SolicitudPlanAtlassian(careerId: careerId);
+      }
+    }
   }
 
-  Future<void> _openGlobalSearch() async {
-    await Navigator.of(context, rootNavigator: true).push<void>(
-      rutaAtlassian<void>(
-        builder: (_) => PantallaBusquedaGlobalAtlassian(
-          trajectoryListenable: _trajectory,
-          selectedCareerListenable: _selectedCareer,
-          onOpenDestination: _handleSearchDestination,
-        ),
+  Future<void> _openSearch({
+    int? restoreSection,
+    PageRoute<void>? discardRoute,
+  }) async {
+    if (_searchOpen || !mounted) return;
+    _searchOpen = true;
+    _searchReturn = null;
+    _searchReturnRoute = null;
+    late final PageRoute<void> route;
+    route = RutaBusquedaApp<void>(
+      builder: (_) => PantallaBusquedaGlobalReactDeveloper(
+        trajectoryListenable: _trajectory,
+        selectedCareerListenable: _selectedCareer,
+        onOpenDestination: (destination) =>
+            _handleSearchDestination(destination, route),
       ),
     );
+    void restoreOrigin(AnimationStatus status) {
+      if (status != AnimationStatus.completed) return;
+      route.animation?.removeStatusListener(restoreOrigin);
+      // Restaurar el origen cuando el menú ya cubre la sección evita un
+      // destello de Inicio durante el vuelo de la barra hacia el buscador.
+      if (mounted && route.isCurrent && restoreSection != null) {
+        if (discardRoute?.isActive ?? false) {
+          discardRoute!.navigator?.removeRoute(discardRoute);
+        }
+        _activateSection(restoreSection);
+      }
+    }
+
+    try {
+      final navigation = Navigator.of(
+        context,
+        rootNavigator: true,
+      ).push<void>(route);
+      if (restoreSection != null) {
+        route.animation?.addStatusListener(restoreOrigin);
+        restoreOrigin(route.animation!.status);
+      }
+      await navigation;
+      await route.completed;
+    } finally {
+      route.animation?.removeStatusListener(restoreOrigin);
+      _searchOpen = false;
+      // Una salida hacia otro destino no devuelve el Hero al origen. Al
+      // finalizar el vuelo, renovar su estado libera la barra de Inicio.
+      if (mounted) setState(() => _searchRevision++);
+    }
   }
 
-  Future<void> _openReactSearch() async {
-    await Navigator.of(context, rootNavigator: true).push<void>(
-      rutaAtlassian<void>(
-        builder: (_) => PantallaBusquedaGlobalReactDeveloper(
-          trajectoryListenable: _trajectory,
-          selectedCareerListenable: _selectedCareer,
-          onOpenDestination: _handleSearchDestination,
+  Future<void> _pushInSection(int section, Widget page) async {
+    final originSection = _section;
+    _activateSection(section);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    final route = rutaAtlassian<void>(
+      builder: (_) => RegresoBusquedaApp(
+        onVolver: () => unawaited(_handleBack()),
+        child: PopScope<void>(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) unawaited(_handleBack());
+          },
+          child: page,
         ),
       ),
+      animarEntrada: false,
     );
-  }
-
-  void _pushInSection(int section, Widget page) {
-    _activateSection(section);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _navigatorKeys[section].currentState?.push<void>(
-        rutaAtlassian<void>(builder: (_) => page),
-      );
-    });
+    _searchReturn = (origen: originSection, destino: section);
+    _searchReturnRoute = route;
+    // El buscador cubre el destino mientras se monta: no hay una segunda
+    // entrada que deje ver la página anterior después de retirar la búsqueda.
+    unawaited(_navigatorKeys[section].currentState?.push<void>(route));
+    await WidgetsBinding.instance.endOfFrame;
   }
 
   int? _trajectoryCareerIndex(String? careerId) {
@@ -216,12 +280,46 @@ class _PantallaLaboratorioAtlassianState
 
   Future<void> _handleSearchDestination(
     DestinoBusquedaAtlassian destination,
+    PageRoute<void> searchRoute,
   ) async {
+    if (_resolvingSearch || !searchRoute.isCurrent) return;
+    _resolvingSearch = true;
+    final originSection = _section;
     final rootNavigator = Navigator.of(context, rootNavigator: true);
-    if (rootNavigator.canPop()) rootNavigator.pop();
-    await Future<void>.delayed(const Duration(milliseconds: 90));
-    if (!mounted) return;
+    final prepararPantalla = switch (destination.tipo) {
+      TipoDestinoBusquedaAtlassian.sage ||
+      TipoDestinoBusquedaAtlassian.sincronizar ||
+      TipoDestinoBusquedaAtlassian.documentoAcademico ||
+      TipoDestinoBusquedaAtlassian.desincronizar ||
+      TipoDestinoBusquedaAtlassian.cerrarSesionSage ||
+      TipoDestinoBusquedaAtlassian.salir => false,
+      _ => true,
+    };
+    try {
+      if (prepararPantalla) {
+        await _applySearchDestination(destination);
+        if (destination.tipo == TipoDestinoBusquedaAtlassian.seccion &&
+            _section != 0) {
+          _searchReturn = (origen: originSection, destino: _section);
+        }
+        // La sección y sus filtros deben haber pintado antes de comenzar
+        // la salida del buscador, que ahora revela directamente el destino.
+        await WidgetsBinding.instance.endOfFrame;
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      if (!mounted || !searchRoute.isCurrent) return;
+      rootNavigator.pop();
+      await searchRoute.completed;
+      if (!mounted) return;
+      if (!prepararPantalla) await _applySearchDestination(destination);
+    } finally {
+      _resolvingSearch = false;
+    }
+  }
 
+  Future<void> _applySearchDestination(
+    DestinoBusquedaAtlassian destination,
+  ) async {
     switch (destination.tipo) {
       case TipoDestinoBusquedaAtlassian.seccion:
         final section = destination.seccion ?? 0;
@@ -252,7 +350,7 @@ class _PantallaLaboratorioAtlassianState
         }
         return;
       case TipoDestinoBusquedaAtlassian.calendario:
-        _pushInSection(
+        await _pushInSection(
           0,
           PantallaCalendarioAtlassian(
             careerId: destination.careerId ?? 'historia',
@@ -262,7 +360,7 @@ class _PantallaLaboratorioAtlassianState
         );
         return;
       case TipoDestinoBusquedaAtlassian.disenos:
-        _pushInSection(
+        await _pushInSection(
           0,
           PantallaDisenosAtlassian(
             initialCareerId: destination.careerId,
@@ -271,7 +369,7 @@ class _PantallaLaboratorioAtlassianState
         );
         return;
       case TipoDestinoBusquedaAtlassian.escenarios:
-        _pushInSection(
+        await _pushInSection(
           0,
           PantallaEscenariosInicializadosAtlassian(
             careerId: destination.careerId,
@@ -281,15 +379,15 @@ class _PantallaLaboratorioAtlassianState
         );
         return;
       case TipoDestinoBusquedaAtlassian.ayuda:
-        _pushInSection(0, const PantallaAyudaAtlassian());
+        await _pushInSection(0, const PantallaAyudaAtlassian());
         return;
       case TipoDestinoBusquedaAtlassian.proximosPasos:
         final career = _currentTrajectoryCareer();
-        _pushInSection(0, PantallaProximosPasosAtlassian(career: career));
+        await _pushInSection(0, PantallaProximosPasosAtlassian(career: career));
         return;
       case TipoDestinoBusquedaAtlassian.avance:
         final career = _currentTrajectoryCareer();
-        _pushInSection(0, PantallaAvanceAtlassian(career: career));
+        await _pushInSection(0, PantallaAvanceAtlassian(career: career));
         return;
       case TipoDestinoBusquedaAtlassian.sage:
         _activateSection(0);
@@ -327,14 +425,14 @@ class _PantallaLaboratorioAtlassianState
       case TipoDestinoBusquedaAtlassian.detalleExamen:
         final event = destination.evento;
         if (event != null) {
-          _pushInSection(1, PantallaDetalleExamenAtlassian(event: event));
+          await _pushInSection(1, PantallaDetalleExamenAtlassian(event: event));
         }
         return;
       case TipoDestinoBusquedaAtlassian.detallePlan:
         final subject = destination.materiaPlan;
         final allSubjects = destination.materiasPlan;
         if (subject != null && allSubjects != null) {
-          _pushInSection(
+          await _pushInSection(
             2,
             PantallaDetallePlanAtlassian(
               subject: subject,
@@ -348,7 +446,7 @@ class _PantallaLaboratorioAtlassianState
         final subject = destination.materiaPlan;
         final content = destination.contenidoCurricular;
         if (subject != null) {
-          _pushInSection(
+          await _pushInSection(
             0,
             PantallaDetalleDisenoAtlassian(
               subject: subject,
@@ -369,7 +467,7 @@ class _PantallaLaboratorioAtlassianState
             (item) => item.gridRowId == career.gridRowId,
           );
           if (index >= 0) _selectedCareer.value = index;
-          _pushInSection(
+          await _pushInSection(
             3,
             PantallaDetalleMateriaAtlassian(subject: subject, career: career),
           );
@@ -390,7 +488,24 @@ class _PantallaLaboratorioAtlassianState
   Future<bool> _handleBack() async {
     final navigator = _navigatorKeys[_section].currentState;
     if (navigator?.canPop() ?? false) {
+      final returnRoute = _searchReturnRoute;
+      final searchReturn = _searchReturn;
+      if (returnRoute?.isCurrent == true && searchReturn != null) {
+        unawaited(
+          _openSearch(
+            restoreSection: searchReturn.origen,
+            discardRoute: returnRoute,
+          ),
+        );
+        return false;
+      }
       navigator!.pop();
+      return false;
+    }
+    final searchReturn = _searchReturn;
+    if (searchReturn != null && searchReturn.destino == _section) {
+      _searchReturn = null;
+      unawaited(_openSearch(restoreSection: searchReturn.origen));
       return false;
     }
     if (_section != 0) {
@@ -410,6 +525,7 @@ class _PantallaLaboratorioAtlassianState
     _planRequest.dispose();
     _subjectRequest.dispose();
     _homeRequest.dispose();
+    _topBlurProgress.dispose();
     super.dispose();
   }
 
@@ -429,7 +545,7 @@ class _PantallaLaboratorioAtlassianState
         actionRequestListenable: _homeRequest,
         onTrajectoryChanged: _replaceTrajectory,
         onNavigate: _selectSection,
-        onSearch: _openReactSearch,
+        onSearch: _openSearch,
         onExit: widget.hideExit
             ? null
             : () {
@@ -439,11 +555,11 @@ class _PantallaLaboratorioAtlassianState
               },
       ),
       PantallaExamenesAtlassian(
-        onSearch: _openGlobalSearch,
+        onSearch: _openSearch,
         requestListenable: _examRequest,
       ),
       PantallaPlanAtlassian(
-        onSearch: _openGlobalSearch,
+        onSearch: _openSearch,
         requestListenable: _planRequest,
       ),
       PantallaMateriasAtlassian(
@@ -458,7 +574,7 @@ class _PantallaLaboratorioAtlassianState
         selectedCareerListenable: _selectedCareer,
         onDesynchronize: _desynchronize,
         onNavigate: _selectSection,
-        onSearch: _openGlobalSearch,
+        onSearch: _openSearch,
       ),
     ];
 
@@ -482,18 +598,16 @@ class _PantallaLaboratorioAtlassianState
       );
     });
 
-    final rawContent = IndexedStack(index: _section, children: tabs);
+    final rawContent = SeccionesMovimientoApp(index: _section, children: tabs);
     final content = NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         if (notification.metrics.axis == Axis.vertical) {
           final pixels = notification.metrics.pixels;
           final progress = (pixels / 48.0).clamp(0.0, 1.0);
-          if ((progress - _topBlurProgress).abs() > 0.02) {
+          if ((progress - _topBlurProgress.value).abs() > 0.02) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && (progress - _topBlurProgress).abs() > 0.02) {
-                setState(() {
-                  _topBlurProgress = progress;
-                });
+              if (mounted && (progress - _topBlurProgress.value).abs() > 0.02) {
+                _topBlurProgress.value = progress;
               }
             });
           }
@@ -504,7 +618,10 @@ class _PantallaLaboratorioAtlassianState
     );
     final isSubRoute = _navigatorKeys[_section].currentState?.canPop() ?? false;
     final allowBlursAndSearch = !desktop && !isSubRoute;
-    final showFloatingSearch = allowBlursAndSearch && _section != 0;
+    final showFloatingSearch = allowBlursAndSearch;
+    final searchBackground = _section == 0 && !dark
+        ? const Color(0xFFF7FAFF)
+        : theme.scaffoldBackgroundColor;
     final body = desktop
         ? ValueListenableBuilder<TrayectoriaSageLaboratorio?>(
             valueListenable: _trajectory,
@@ -512,8 +629,11 @@ class _PantallaLaboratorioAtlassianState
               return Stack(
                 children: [
                   AnimatedPadding(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeInOut,
+                    duration: MovimientoApp.duracion(
+                      context,
+                      MovimientoApp.ruta,
+                    ),
+                    curve: MovimientoApp.curva,
                     padding: EdgeInsets.only(
                       left: _sidebarHidden ? 0.0 : 180.0,
                     ),
@@ -585,125 +705,63 @@ class _PantallaLaboratorioAtlassianState
         : Stack(
             children: [
               content,
-              // Efecto fade y difuminado progresivo superior: solo aparece progresivamente al hacer scroll
+              // Sólo cambia la capa superior; el scroll no reconstruye navegadores.
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
-                child: (!allowBlursAndSearch || _topBlurProgress <= 0.01)
-                    ? const SizedBox.shrink()
-                    : IgnorePointer(
-                        child: Opacity(
-                          opacity: _topBlurProgress,
-                          child: ClipRect(
-                            child: ShaderMask(
-                              shaderCallback: (rect) {
-                                return const LinearGradient(
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _topBlurProgress,
+                  builder: (context, progress, _) =>
+                      !allowBlursAndSearch || progress <= 0.01
+                      ? const SizedBox.shrink()
+                      : IgnorePointer(
+                          child: SizedBox(
+                            height: MediaQuery.paddingOf(context).top + 60,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    Colors.black,
-                                    Colors.black,
-                                    Colors.black87,
-                                    Colors.black45,
-                                    Colors.transparent,
-                                  ],
-                                  stops: [0.0, 0.35, 0.60, 0.82, 1.0],
-                                ).createShader(rect);
-                              },
-                              blendMode: BlendMode.dstIn,
-                              child: BackdropFilter(
-                                filter: ui.ImageFilter.blur(
-                                  sigmaX: 16,
-                                  sigmaY: 16,
-                                ),
-                                child: Container(
-                                  height:
-                                      MediaQuery.paddingOf(context).top + 60,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        theme.scaffoldBackgroundColor
-                                            .withValues(alpha: 0.98),
-                                        theme.scaffoldBackgroundColor
-                                            .withValues(alpha: 0.80),
-                                        theme.scaffoldBackgroundColor
-                                            .withValues(alpha: 0.40),
-                                        theme.scaffoldBackgroundColor
-                                            .withValues(alpha: 0.0),
-                                      ],
-                                      stops: const [0.0, 0.35, 0.70, 1.0],
+                                    theme.scaffoldBackgroundColor.withValues(
+                                      alpha: 0.98 * progress,
                                     ),
-                                  ),
+                                    theme.scaffoldBackgroundColor.withValues(
+                                      alpha: 0,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
+                ),
               ),
-              // Efecto fade y difuminado progresivo inferior (BackdropFilter + ShaderMask)
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
+                height: _section == 0 ? 100 : 120,
                 child: !showFloatingSearch
                     ? const SizedBox.shrink()
                     : IgnorePointer(
-                        child: ClipRect(
-                          child: ShaderMask(
-                            shaderCallback: (rect) {
-                              return const LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: [
-                                  Colors.black,
-                                  Colors.black,
-                                  Colors.black87,
-                                  Colors.black45,
-                                  Colors.transparent,
-                                ],
-                                stops: [0.0, 0.35, 0.60, 0.82, 1.0],
-                              ).createShader(rect);
-                            },
-                            blendMode: BlendMode.dstIn,
-                            child: BackdropFilter(
-                              filter: ui.ImageFilter.blur(
-                                sigmaX: 16,
-                                sigmaY: 16,
-                              ),
-                              child: Container(
-                                height: 140,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.bottomCenter,
-                                    end: Alignment.topCenter,
-                                    colors: [
-                                      theme.scaffoldBackgroundColor.withValues(
-                                        alpha: 0.98,
-                                      ),
-                                      theme.scaffoldBackgroundColor.withValues(
-                                        alpha: 0.80,
-                                      ),
-                                      theme.scaffoldBackgroundColor.withValues(
-                                        alpha: 0.40,
-                                      ),
-                                      theme.scaffoldBackgroundColor.withValues(
-                                        alpha: 0.0,
-                                      ),
-                                    ],
-                                    stops: const [0.0, 0.35, 0.70, 1.0],
-                                  ),
-                                ),
-                              ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                searchBackground,
+                                searchBackground.withValues(alpha: 0),
+                              ],
                             ),
                           ),
                         ),
                       ),
               ),
-              // Buscador flotante global: siempre presente en el Stack para mantener índices fijos
+              // La barra queda fuera de los navegadores y de la animación de
+              // las secciones. Sólo su Hero anima la entrada y la salida.
               Positioned(
                 bottom: 0,
                 left: 0,
@@ -711,21 +769,30 @@ class _PantallaLaboratorioAtlassianState
                 child: !showFloatingSearch
                     ? const SizedBox.shrink()
                     : SafeArea(
+                        top: false,
+                        maintainBottomViewPadding: true,
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                           child: Container(
                             decoration: BoxDecoration(
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  blurRadius: 16,
-                                  spreadRadius: 2,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
+                              boxShadow: _section == 0
+                                  ? null
+                                  : [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.08,
+                                        ),
+                                        blurRadius: 16,
+                                        spreadRadius: 2,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
                             ),
-                            child: AccesoBusquedaAtlassian(
-                              onTap: _openGlobalSearch,
+                            child: BarraBusquedaApp(
+                              key: _section == 0
+                                  ? const ValueKey('inicio-react-liquid-search')
+                                  : null,
+                              onTap: _openSearch,
                             ),
                           ),
                         ),
@@ -802,36 +869,45 @@ class _PantallaLaboratorioAtlassianState
             systemNavigationBarIconBrightness: Brightness.dark,
           );
 
-    return Theme(
-      data: theme,
-      child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: overlayStyle,
-        child: PopScope<void>(
-          canPop: false,
-          onPopInvokedWithResult: (didPop, _) async {
-            if (didPop) return;
-            final shouldExit = await _handleBack();
-            if (shouldExit && !widget.hideExit && context.mounted) {
-              Navigator.of(context).pop();
-            }
-          },
-          child: ValueListenableBuilder<TrayectoriaSageLaboratorio?>(
-            valueListenable: _trajectory,
-            builder: (context, trajectory, _) {
-              return Scaffold(
-                backgroundColor: theme.scaffoldBackgroundColor,
-                resizeToAvoidBottomInset: false,
-                body: body,
-                drawer: desktop
-                    ? null
-                    : DrawerMovilAtlassian(
-                        selectedIndex: _section,
-                        onSelected: _selectSection,
-                        onSearch: _openReactSearch,
-                        nombreEstudiante: trajectory?.perfil.nombre,
-                      ),
-              );
+    return TrayectoriaActivaAtlassian(
+      trayectoria: _trajectory,
+      carreraSeleccionada: _selectedCareer,
+      cambios: _trajectoryChanges,
+      child: Theme(
+        data: theme,
+        child: AnnotatedRegion<SystemUiOverlayStyle>(
+          value: overlayStyle,
+          child: PopScope<void>(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) async {
+              if (didPop) return;
+              final shouldExit = await _handleBack();
+              if (shouldExit && !widget.hideExit && context.mounted) {
+                Navigator.of(context).pop();
+              }
             },
+            child: ValueListenableBuilder<TrayectoriaSageLaboratorio?>(
+              valueListenable: _trajectory,
+              builder: (context, trajectory, _) {
+                return Scaffold(
+                  backgroundColor: theme.scaffoldBackgroundColor,
+                  resizeToAvoidBottomInset: false,
+                  body: CicloBusquedaApp(
+                    revision: _searchRevision,
+                    barraExterna: !desktop,
+                    child: body,
+                  ),
+                  drawer: desktop
+                      ? null
+                      : DrawerMovilAtlassian(
+                          selectedIndex: _section,
+                          onSelected: _selectSection,
+                          onSearch: _openSearch,
+                          nombreEstudiante: trajectory?.perfil.nombre,
+                        ),
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -1003,8 +1079,9 @@ class DrawerMovilAtlassian extends StatelessWidget {
                     children: [
                       InkWell(
                         onTap: () {
+                          final navigator = Navigator.of(context);
                           Navigator.pop(context);
-                          Navigator.of(context).push(
+                          navigator.push(
                             MaterialPageRoute<void>(
                               builder: (_) =>
                                   const AccesoAdministradorPantalla(),

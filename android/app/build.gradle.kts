@@ -62,13 +62,7 @@ android {
         }
     }
 
-    splits {
-        abi {
-            isEnable = false
-            reset()
-            isUniversalApk = false
-        }
-    }
+    // Flutter configura los APK por arquitectura según --split-per-abi.
 }
 
 dependencies {

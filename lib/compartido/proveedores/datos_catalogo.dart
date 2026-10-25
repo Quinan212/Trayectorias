@@ -108,11 +108,12 @@ const List<CareerInfo> kCareers = [
   ),
   CareerInfo(
     id: 'fisica',
-    nombre: 'Profesorado en Física',
-    assetHtml: 'assets/Fisica.html',
-    downloadUrl: 'https://drive.google.com/tu_link_oficial_de_fisica',
+    nombre: 'Profesorado en Educación Física',
+    iconAsset: 'assets/career_icons/logo_iseef.png',
+    assetHtml: 'assets/data/educacion_fisica.json',
+    downloadUrl:
+        'https://iseef-ers.infd.edu.ar/sitio/wp-content/uploads/2025/11/0979-17_CGE_Aprueba_Disen_o_Curricular_Profesorado_de_Educacion_Fisica.pdf',
     categoria: 'profesorado',
-    hidden: true,
   ),
   CareerInfo(
     id: 'musica',
@@ -166,6 +167,12 @@ const List<CareerInfo> kCareers = [
 ];
 
 const List<InstitutionInfo> kInstitutions = [
+  InstitutionInfo(
+    id: 'fisica_iseef',
+    careerId: 'fisica',
+    iconAsset: 'assets/career_icons/logo_iseef.png',
+    nombre: 'Instituto Superior de las Especialidades de la Educación Física',
+  ),
   InstitutionInfo(
     id: 'historia_pscs',
     careerId: 'historia',

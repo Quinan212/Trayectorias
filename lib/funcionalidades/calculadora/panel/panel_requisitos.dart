@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../compartido/movimiento/movimiento_app.dart';
 import '../../../compartido/proveedores/estado_app.dart';
 import '../../../modelos/materia.dart';
 
@@ -18,7 +19,8 @@ class PanelRequisitos {
 
     bool isPracticaIVEspecial(CorrelativaDetallada c) {
       final n = course.nombre.toLowerCase();
-      final isPDIV = n.contains('práctica docente iv') ||
+      final isPDIV =
+          n.contains('práctica docente iv') ||
           n.contains('practica docente iv');
       final sName = (c.nombre ?? '').toLowerCase();
       return isPDIV &&
@@ -40,8 +42,8 @@ class PanelRequisitos {
       final tipo = c.type.toUpperCase();
       final title =
           (c.isSpecial == true && (c.nombre?.trim().isNotEmpty ?? false))
-              ? c.nombre!.trim()
-              : (nombreMateria(c.id) ?? c.id).trim();
+          ? c.nombre!.trim()
+          : (nombreMateria(c.id) ?? c.id).trim();
 
       final key = '${title.toLowerCase()}|$tipo';
       if (seen.add(key)) uniqueDet.add(c);
@@ -56,8 +58,8 @@ class PanelRequisitos {
 
         final title =
             (c.isSpecial == true && (c.nombre?.trim().isNotEmpty ?? false))
-                ? c.nombre!
-                : (nombreMateria(c.id) ?? c.id);
+            ? c.nombre!
+            : (nombreMateria(c.id) ?? c.id);
 
         final tipo = c.type.toUpperCase();
         final esSpecial = c.isSpecial == true;
@@ -67,8 +69,8 @@ class PanelRequisitos {
 
         final subtitle = (tipo == 'A')
             ? ((esSpecial || esPDIV)
-                ? 'Deben estar APROBADAS (A)'
-                : 'Debe estar APROBADA (A)')
+                  ? 'Deben estar APROBADAS (A)'
+                  : 'Debe estar APROBADA (A)')
             : (tipo == 'R' ? 'Debe estar REGULARIZADA (R)' : '');
 
         final opciones = usarDosOpciones
@@ -109,20 +111,63 @@ class PanelRequisitos {
                 ),
               ],
               const SizedBox(height: 10),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                child: Row(
-                  children: List.generate(opciones.length, (j) {
-                    final opt = opciones[j];
-                    final selected = value == opt;
+              Wrap(
+                runSpacing: 6,
+                children: List.generate(opciones.length, (j) {
+                  final opt = opciones[j];
+                  final selected = value == opt;
 
-                    return Padding(
-                      padding: EdgeInsets.only(
-                        right: j == opciones.length - 1 ? 0 : 10,
-                      ),
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      right: j == opciones.length - 1 ? 0 : 10,
+                    ),
+                    child: ToqueMovimientoApp(
                       child: ChoiceChip(
-                        showCheckmark: true,
+                        chipAnimationStyle: ChipAnimationStyle(
+                          enableAnimation: AnimationStyle(
+                            duration: MovimientoApp.duracion(
+                              context,
+                              MovimientoApp.respuesta,
+                            ),
+                            reverseDuration: MovimientoApp.duracion(
+                              context,
+                              MovimientoApp.respuesta,
+                            ),
+                          ),
+                          avatarDrawerAnimation: AnimationStyle(
+                            duration: MovimientoApp.duracion(
+                              context,
+                              MovimientoApp.respuesta,
+                            ),
+                            reverseDuration: MovimientoApp.duracion(
+                              context,
+                              MovimientoApp.respuesta,
+                            ),
+                          ),
+                          selectAnimation: AnimationStyle(
+                            duration: MovimientoApp.duracion(
+                              context,
+                              MovimientoApp.respuesta,
+                            ),
+                            reverseDuration: MovimientoApp.duracion(
+                              context,
+                              MovimientoApp.respuesta,
+                            ),
+                          ),
+                        ),
+                        showCheckmark: false,
+                        avatar: SizedBox(
+                          width: 18,
+                          child: Icon(
+                            selected
+                                ? Icons.check_circle_rounded
+                                : Icons.circle_outlined,
+                            size: 18,
+                            color: selected
+                                ? EstilosPanel.chipSelectedFg(context)
+                                : EstilosPanel.chipFg(context),
+                          ),
+                        ),
                         checkmarkColor: selected
                             ? EstilosPanel.chipSelectedFg(context)
                             : EstilosPanel.chipFg(context),
@@ -135,8 +180,10 @@ class PanelRequisitos {
                         onSelected: (_) => notifier.setStatus(c.id, opt),
                         backgroundColor: EstilosPanel.chipBg(context),
                         selectedColor: EstilosPanel.chipSelectedBg(context),
-                        side:
-                            EstilosPanel.chipSide(context, selected: selected),
+                        side: EstilosPanel.chipSide(
+                          context,
+                          selected: selected,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -145,14 +192,15 @@ class PanelRequisitos {
                           selected: selected,
                         ),
                         labelPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 2),
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity:
-                            const VisualDensity(horizontal: -2, vertical: -2),
+                          horizontal: 12,
+                          vertical: 2,
+                        ),
+                        materialTapTargetSize: MaterialTapTargetSize.padded,
+                        visualDensity: VisualDensity.standard,
                       ),
-                    );
-                  }),
-                ),
+                    ),
+                  );
+                }),
               ),
             ],
           ),

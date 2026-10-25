@@ -5,11 +5,13 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugins.webviewflutter.WebViewFlutterPlugin
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -86,6 +88,47 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "ar.maillet.correlativas_historia/sage_webview_activity",
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "setActive" && call.method != "release") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val identifier = call.argument<Number>("identifier")?.toLong()
+            val plugin = flutterEngine.plugins.get(WebViewFlutterPlugin::class.java)
+                as? WebViewFlutterPlugin
+            val webView = identifier?.let {
+                plugin?.instanceManager?.getInstance<WebView>(it)
+            }
+            if (webView == null) {
+                result.success(false)
+                return@setMethodCallHandler
+            }
+            try {
+                when (call.method) {
+                    "setActive" -> {
+                        if (call.argument<Boolean>("active") == true) {
+                            webView.onResume()
+                        } else {
+                            webView.onPause()
+                        }
+                    }
+                    "release" -> {
+                        // Flutter conserva la propiedad y disposición de la vista.
+                        // Descargar el DOM detiene sus tareas sin borrar las cookies.
+                        webView.stopLoading()
+                        webView.onPause()
+                        webView.loadUrl("about:blank")
+                    }
+                }
+                result.success(true)
+            } catch (error: Exception) {
+                result.error("SAGE_WEBVIEW_ACTIVITY", error.message, null)
+            }
+        }
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

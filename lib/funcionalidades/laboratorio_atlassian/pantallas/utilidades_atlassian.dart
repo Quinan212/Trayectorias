@@ -81,5 +81,7 @@ String idCarreraExamenAtlassian(String raw) {
     return 'politica';
   }
   if (value.contains('artes')) return 'artes_visuales';
+  if (value.contains('música') || value.contains('musica')) return 'musica';
+  if (value.contains('física') || value.contains('fisica')) return 'fisica';
   return 'historia';
 }

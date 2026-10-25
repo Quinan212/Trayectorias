@@ -1,3 +1,4 @@
+import 'package:correlativas_historia/compartido/navegacion/barra_busqueda_app.dart';
 import 'package:correlativas_historia/funcionalidades/curriculum/proveedores/proveedores_curriculum.dart';
 import 'package:correlativas_historia/funcionalidades/examenes/modelos/evento_examen.dart';
 import 'package:correlativas_historia/funcionalidades/examenes/proveedores/proveedores_examenes.dart';
@@ -57,7 +58,9 @@ void main() {
     expect(dark.resultSurface.computeLuminance(), lessThan(0.05));
   });
 
-  testWidgets('el Inicio React usa Liquid Glass claro y oscuro', (tester) async {
+  testWidgets('el acceso compartido conserva contraste claro y oscuro', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(430, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -76,7 +79,7 @@ void main() {
       request.dispose();
     });
 
-    Future<BoxDecoration> pump(Brightness brightness) async {
+    Future<Color> pump(Brightness brightness) async {
       final theme = brightness == Brightness.light
           ? ThemeData.light(useMaterial3: true)
           : ThemeData.dark(useMaterial3: true);
@@ -96,19 +99,19 @@ void main() {
         ),
       );
       await tester.pump(const Duration(milliseconds: 500));
-      final surface = tester.widget<Container>(
-        find.byKey(const ValueKey<String>('inicio-react-liquid-surface')),
+      final surface = tester.widget<Material>(
+        find.descendant(
+          of: find.byType(BarraBusquedaApp),
+          matching: find.byType(Material),
+        ),
       );
-      return surface.decoration! as BoxDecoration;
+      return surface.color!;
     }
 
     final light = await pump(Brightness.light);
     final dark = await pump(Brightness.dark);
-    final lightGradient = light.gradient! as LinearGradient;
-    final darkGradient = dark.gradient! as LinearGradient;
-
-    expect(lightGradient.colors.first.computeLuminance(), greaterThan(0.75));
-    expect(darkGradient.colors.first.computeLuminance(), lessThan(0.15));
+    expect(light.computeLuminance(), greaterThan(0.75));
+    expect(dark.computeLuminance(), lessThan(0.15));
     expect(find.text('todo lo que necesitás está acá'), findsOneWidget);
   });
 
@@ -125,7 +128,7 @@ void main() {
     addTearDown(trajectory.dispose);
     addTearDown(selectedCareer.dispose);
 
-    Future<(BoxDecoration, BoxDecoration, BoxDecoration)> pump(
+    Future<(BoxDecoration, BoxDecoration, Color)> pump(
       Brightness brightness,
     ) async {
       final theme = brightness == Brightness.light
@@ -152,26 +155,25 @@ void main() {
           ),
         ),
       );
-      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump(const Duration(seconds: 2));
 
-      final access = tester.widget<AnimatedContainer>(
+      final access = tester.widget<Container>(
         find.byKey(const ValueKey<String>('busqueda-react-access-Calendario')),
       );
-      final search = tester.widget<Container>(
-        find.byKey(const ValueKey<String>('busqueda-react-liquid-surface')),
+      final search = tester.widget<Material>(
+        find
+            .descendant(
+              of: find.byType(BarraBusquedaApp),
+              matching: find.byType(Material),
+            )
+            .first,
       );
       expect(
         find.byKey(const ValueKey<String>('busqueda-react-bottom-fade')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(
-        find.byKey(const ValueKey<String>('busqueda-react-liquid-leading')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('busqueda-react-liquid-trailing')),
-        findsOneWidget,
-      );
+      expect(find.byType(BarraBusquedaApp), findsOneWidget);
+      expect(tester.getRect(find.byType(BarraBusquedaApp)).top, lessThan(100));
 
       await tester.drag(
         find.byKey(const ValueKey<String>('busqueda-react-landing')),
@@ -214,7 +216,7 @@ void main() {
       return (
         access.decoration! as BoxDecoration,
         sage.decoration! as BoxDecoration,
-        search.decoration! as BoxDecoration,
+        search.color!,
       );
     }
 
@@ -225,8 +227,6 @@ void main() {
     final darkAccess = dark.$1.gradient! as LinearGradient;
     final lightSage = light.$2.gradient! as LinearGradient;
     final darkSage = dark.$2.gradient! as LinearGradient;
-    final lightSearch = light.$3.gradient! as LinearGradient;
-    final darkSearch = dark.$3.gradient! as LinearGradient;
 
     expect(lightAccess.colors, hasLength(4));
     expect(lightAccess.colors.first.computeLuminance(), greaterThan(0.75));
@@ -251,58 +251,58 @@ void main() {
     expect(lightSage.colors.last.computeLuminance(), greaterThan(0.90));
     expect(lightSage.colors.last.a, 1);
     expect(darkSage.colors.last.computeLuminance(), lessThan(0.04));
-    expect(lightSearch.colors.first.computeLuminance(), greaterThan(0.75));
-    expect(darkSearch.colors.first.computeLuminance(), lessThan(0.15));
+    expect(light.$3.computeLuminance(), greaterThan(0.75));
+    expect(dark.$3.computeLuminance(), lessThan(0.15));
   });
 
-  testWidgets('el botón Volver claro usa una superficie circular sin sombra rectangular', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(430, 980);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'el botón Volver claro usa una superficie circular sin sombra rectangular',
+    (tester) async {
+      tester.view.physicalSize = const Size(430, 980);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final trajectory = ValueNotifier<TrayectoriaSageLaboratorio?>(null);
-    final selectedCareer = ValueNotifier<int>(0);
-    addTearDown(trajectory.dispose);
-    addTearDown(selectedCareer.dispose);
+      final trajectory = ValueNotifier<TrayectoriaSageLaboratorio?>(null);
+      final selectedCareer = ValueNotifier<int>(0);
+      addTearDown(trajectory.dispose);
+      addTearDown(selectedCareer.dispose);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          proveedorTodosLosExamenes.overrideWith(
-            (ref) async => const <EventoExamen>[],
-          ),
-          proveedorContenidosCurriculares.overrideWith(
-            (ref) async => const <ContenidoCurricular>[],
-          ),
-        ],
-        child: MaterialApp(
-          theme: ThemeData.light(useMaterial3: true),
-          home: PantallaBusquedaGlobalReactDeveloper(
-            trajectoryListenable: trajectory,
-            selectedCareerListenable: selectedCareer,
-            onOpenDestination: (_) async {},
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            proveedorTodosLosExamenes.overrideWith(
+              (ref) async => const <EventoExamen>[],
+            ),
+            proveedorContenidosCurriculares.overrideWith(
+              (ref) async => const <ContenidoCurricular>[],
+            ),
+          ],
+          child: MaterialApp(
+            theme: ThemeData.light(useMaterial3: true),
+            home: PantallaBusquedaGlobalReactDeveloper(
+              trajectoryListenable: trajectory,
+              selectedCareerListenable: selectedCareer,
+              onOpenDestination: (_) async {},
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump(const Duration(milliseconds: 350));
+      );
+      await tester.pump(const Duration(milliseconds: 350));
 
-    final material = tester.widget<Material>(
-      find.byKey(const ValueKey<String>('busqueda-react-back-material')),
-    );
-    final shadow = tester.widget<DecoratedBox>(
-      find.byKey(const ValueKey<String>('busqueda-react-back-shadow')),
-    );
-    final shadowDecoration = shadow.decoration as BoxDecoration;
-    expect(material.shape, isA<CircleBorder>());
-    expect(material.clipBehavior, Clip.antiAlias);
-    expect(material.elevation, 0);
-    expect(material.color!.computeLuminance(), greaterThan(0.95));
-    expect(shadowDecoration.shape, BoxShape.circle);
-    expect(shadowDecoration.boxShadow, isNotEmpty);
-  });
-
+      final material = tester.widget<Material>(
+        find.byKey(const ValueKey<String>('busqueda-react-back-material')),
+      );
+      final shadow = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey<String>('busqueda-react-back-shadow')),
+      );
+      final shadowDecoration = shadow.decoration as BoxDecoration;
+      expect(material.shape, isA<CircleBorder>());
+      expect(material.clipBehavior, Clip.antiAlias);
+      expect(material.elevation, 0);
+      expect(material.color!.computeLuminance(), greaterThan(0.95));
+      expect(shadowDecoration.shape, BoxShape.circle);
+      expect(shadowDecoration.boxShadow, isNotEmpty);
+    },
+  );
 }

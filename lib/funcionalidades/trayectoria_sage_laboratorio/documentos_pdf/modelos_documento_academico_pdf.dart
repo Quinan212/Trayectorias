@@ -1,8 +1,4 @@
-enum TipoDocumentoAcademicoPdf {
-  libreta,
-  analitico,
-  situacionAcademica,
-}
+enum TipoDocumentoAcademicoPdf { libreta, analitico, situacionAcademica }
 
 extension TipoDocumentoAcademicoPdfX on TipoDocumentoAcademicoPdf {
   String get titulo => switch (this) {
@@ -40,6 +36,23 @@ class MateriaDocumentoAcademicoPdf {
   final String? estado;
   final String? fechaMovimiento;
   final String? nota;
+
+  Map<String, dynamic> toJson() => {
+    'nombre': nombre,
+    'anio': anio,
+    'estado': estado,
+    'fecha_movimiento': fechaMovimiento,
+    'nota': nota,
+  };
+
+  factory MateriaDocumentoAcademicoPdf.fromJson(Map<String, dynamic> json) =>
+      MateriaDocumentoAcademicoPdf(
+        nombre: json['nombre'] as String,
+        anio: json['anio'] as int,
+        estado: json['estado'] as String?,
+        fechaMovimiento: json['fecha_movimiento'] as String?,
+        nota: json['nota'] as String?,
+      );
 
   CategoriaEstadoDocumentoPdf get categoriaEstado {
     final value = normalizarTextoDocumentoPdf(estado ?? '');
@@ -89,6 +102,37 @@ class DocumentoAcademicoPdf {
   final String? fechaEmision;
   final String? condicionAlumno;
   final String? promedioOficial;
+
+  Map<String, dynamic> toJson() => {
+    'tipo': tipo.name,
+    'materias': materias.map((materia) => materia.toJson()).toList(),
+    'alumno': alumno,
+    'documento': documento,
+    'establecimiento': establecimiento,
+    'carrera': carrera,
+    'fecha_emision': fechaEmision,
+    'condicion_alumno': condicionAlumno,
+    'promedio_oficial': promedioOficial,
+  };
+
+  factory DocumentoAcademicoPdf.fromJson(Map<String, dynamic> json) =>
+      DocumentoAcademicoPdf(
+        tipo: TipoDocumentoAcademicoPdf.values.byName(json['tipo'] as String),
+        materias: List<MateriaDocumentoAcademicoPdf>.unmodifiable(
+          (json['materias'] as List).map(
+            (row) => MateriaDocumentoAcademicoPdf.fromJson(
+              Map<String, dynamic>.from(row as Map),
+            ),
+          ),
+        ),
+        alumno: json['alumno'] as String?,
+        documento: json['documento'] as String?,
+        establecimiento: json['establecimiento'] as String?,
+        carrera: json['carrera'] as String?,
+        fechaEmision: json['fecha_emision'] as String?,
+        condicionAlumno: json['condicion_alumno'] as String?,
+        promedioOficial: json['promedio_oficial'] as String?,
+      );
 
   int get totalMaterias => materias.length;
 

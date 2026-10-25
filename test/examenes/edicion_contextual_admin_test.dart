@@ -15,7 +15,7 @@ void main() {
   test('la lista reserva la pulsación prolongada para dispositivos admin', () {
     final source = screen.readAsStringSync();
 
-    expect(source, contains('onLongPress: isAdmin &&'));
+    expect(source, matches(RegExp(r'onLongPress:\s*isAdmin\s*&&')));
     expect(source, contains('_openQuickControlSheet('));
     expect(source, contains('proveedorEstadoDispositivoAdministrador'));
   });

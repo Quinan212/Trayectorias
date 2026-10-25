@@ -2,16 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollDirection;
-import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../compartido/componentes/etiqueta_opcion_institucion.dart';
+import '../../../compartido/movimiento/movimiento_app.dart';
 import '../../../compartido/proveedores/datos_catalogo.dart';
+import '../../../compartido/tema/tema_herramientas_app.dart';
 import '../../../datos/cargador_fuente_html.dart';
 import '../../../modelos/materia.dart';
 import '../../cascada/pantalla/componentes/capa_seleccion_institucion.dart';
 import '../busqueda/modelos_busqueda_atlassian.dart';
+import '../componentes/componentes_academicos_app.dart';
 import '../componentes/componentes_atlassian.dart';
 import '../tema/tema_atlassian.dart';
 
@@ -116,13 +117,7 @@ class _PantallaPlanAtlassianState extends State<PantallaPlanAtlassian> {
         );
       }
     });
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-      );
-    }
+    MovimientoApp.volverAlInicio(context, _scrollController);
   }
 
   @override
@@ -203,49 +198,51 @@ class _PantallaPlanAtlassianState extends State<PantallaPlanAtlassian> {
   }
 
   Future<void> _chooseCareer() async {
-    final selectedId = await mostrarHojaAtlassian<String>(
+    final selectedId = await mostrarHojaAcademicaAtlassian<String>(
       context: context,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Seleccionar carrera',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              for (final career in _careers) ...[
-                PanelAtlassian(
-                  selected: career.id == _career.id,
-                  onTap: () => Navigator.of(sheetContext).pop(career.id),
-                  child: Row(
-                    children: [
-                      Icon(
-                        career.id == _career.id
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_off_rounded,
-                        color: career.id == _career.id
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          career.nombre,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                      ),
-                    ],
-                  ),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Seleccionar carrera',
+                  style: Theme.of(sheetContext).textTheme.titleLarge,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+                for (final career in _careers) ...[
+                  PanelAtlassian(
+                    selected: career.id == _career.id,
+                    onTap: () => Navigator.of(sheetContext).pop(career.id),
+                    child: Row(
+                      children: [
+                        Icon(
+                          career.id == _career.id
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_off_rounded,
+                          color: career.id == _career.id
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            career.nombre,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -268,48 +265,50 @@ class _PantallaPlanAtlassianState extends State<PantallaPlanAtlassian> {
   Future<void> _chooseInstitution() async {
     final institutions = _institutionsFor(_career);
     if (institutions.isEmpty) return;
-    final selectedId = await mostrarHojaAtlassian<String>(
+    final selectedId = await mostrarHojaAcademicaAtlassian<String>(
       context: context,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Seleccionar institución',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              for (final institution in institutions) ...[
-                PanelAtlassian(
-                  selected: institution.id == _institution?.id,
-                  onTap: () => Navigator.of(sheetContext).pop(institution.id),
-                  child: Row(
-                    children: [
-                      Icon(
-                        institution.id == _institution?.id
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_off_rounded,
-                        color: institution.id == _institution?.id
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: EtiquetaOpcionInstitucion(
-                          institution,
-                          iconSize: 38,
-                          gap: 10,
-                        ),
-                      ),
-                    ],
-                  ),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Seleccionar institución',
+                  style: Theme.of(sheetContext).textTheme.titleLarge,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+                for (final institution in institutions) ...[
+                  PanelAtlassian(
+                    selected: institution.id == _institution?.id,
+                    onTap: () => Navigator.of(sheetContext).pop(institution.id),
+                    child: Row(
+                      children: [
+                        Icon(
+                          institution.id == _institution?.id
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_off_rounded,
+                          color: institution.id == _institution?.id
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: EtiquetaOpcionInstitucion(
+                            institution,
+                            iconSize: 38,
+                            gap: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -335,35 +334,37 @@ class _PantallaPlanAtlassianState extends State<PantallaPlanAtlassian> {
   }
 
   Future<void> _chooseYear(List<int> years) async {
-    final selected = await mostrarHojaAtlassian<String>(
+    final selected = await mostrarHojaAcademicaAtlassian<String>(
       context: context,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Filtrar por año',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              PanelAtlassian(
-                selected: _year == null,
-                onTap: () => Navigator.of(sheetContext).pop('todos'),
-                child: const Text('Todos los años'),
-              ),
-              const SizedBox(height: 8),
-              for (final year in years) ...[
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Filtrar por año',
+                  style: Theme.of(sheetContext).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
                 PanelAtlassian(
-                  selected: _year == year,
-                  onTap: () => Navigator.of(sheetContext).pop('$year'),
-                  child: Text('$year° año'),
+                  selected: _year == null,
+                  onTap: () => Navigator.of(sheetContext).pop('todos'),
+                  child: const Text('Todos los años'),
                 ),
                 const SizedBox(height: 8),
+                for (final year in years) ...[
+                  PanelAtlassian(
+                    selected: _year == year,
+                    onTap: () => Navigator.of(sheetContext).pop('$year'),
+                    child: Text('$year° año'),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -422,10 +423,13 @@ class _PantallaPlanAtlassianState extends State<PantallaPlanAtlassian> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final headerHeight = MediaQuery.paddingOf(context).top + 72;
-    final header = EncabezadoSeccionAtlassianColapsable(
-      scrollController: _scrollController,
+  Widget build(BuildContext context) =>
+      TemaHerramientasApp(builder: _contenido);
+
+  Widget _contenido(BuildContext context) {
+    final headerHeight = alturaEncabezadoAcademicoAtlassian(context);
+    final header = EncabezadoAcademicoAtlassian(
+      controller: _scrollController,
       title: 'Plan completo',
       subtitle: _career.nombre,
       actions: [
@@ -439,115 +443,131 @@ class _PantallaPlanAtlassianState extends State<PantallaPlanAtlassian> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: FutureBuilder<DatosPlan>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: EdgeInsets.only(top: headerHeight),
-                      child: EstadoVacioAtlassian(
-                        icon: Icons.error_outline_rounded,
-                        title: 'No se pudo cargar el plan',
-                        message: snapshot.error.toString(),
-                        action: BotonAtlassian(
-                          label: 'Reintentar',
-                          icon: Icons.refresh_rounded,
-                          primary: true,
-                          onPressed: () => unawaited(_refresh()),
+      body: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 8),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: FutureBuilder<DatosPlan>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: EdgeInsets.only(top: headerHeight),
+                        child: EstadoVacioAtlassian(
+                          icon: Icons.error_outline_rounded,
+                          title: 'No se pudo cargar el plan',
+                          message: snapshot.error.toString(),
+                          action: BotonAtlassian(
+                            label: 'Reintentar',
+                            icon: Icons.refresh_rounded,
+                            primary: true,
+                            onPressed: () => unawaited(_refresh()),
+                          ),
                         ),
                       ),
+                    );
+                  }
+
+                  final plan = snapshot.data!;
+                  final filtered = _filter(plan.materias);
+                  final years =
+                      plan.materias.map((item) => item.anio).toSet().toList()
+                        ..sort();
+                  final groups = <int, List<Materia>>{};
+                  for (final subject in filtered) {
+                    groups
+                        .putIfAbsent(subject.anio, () => <Materia>[])
+                        .add(subject);
+                  }
+
+                  return RefreshIndicator(
+                    onRefresh: _refresh,
+                    child: ListView(
+                      key: const ValueKey('plan-contenido'),
+                      controller: _scrollController,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        headerHeight + 16,
+                        16,
+                        128,
+                      ),
+                      children: [
+                        _FiltrosPlanAtlassian(
+                          selectedCareer: _career,
+                          selectedInstitution: _institution,
+                          years: years,
+                          selectedYear: _year,
+                          searchController: _searchController,
+                          onChooseCareer: _chooseCareer,
+                          onChooseInstitution: _chooseInstitution,
+                          onChooseYear: () => _chooseYear(years),
+                          onSearchChanged: (value) =>
+                              setState(() => _query = value),
+                          onClearSearch: () {
+                            _searchController.clear();
+                            setState(() => _query = '');
+                          },
+                          onResetFilters: _resetFilters,
+                        ),
+                        const SizedBox(height: 16),
+                        _ContextoPlanAtlassian(
+                          career: _career,
+                          institution: _institution,
+                          subjects: plan.materias,
+                          pdfUrl: plan.pdfUrl,
+                          onOpenPdf: plan.pdfUrl == null
+                              ? null
+                              : () => unawaited(_openPdf(context, plan.pdfUrl)),
+                          onOpenPresentation: _institution == null
+                              ? null
+                              : () => unawaited(_showInstitutionPresentation()),
+                        ),
+                        const SizedBox(height: 22),
+                        if (filtered.isEmpty)
+                          const EstadoVacioAtlassian(
+                            icon: Icons.search_off_rounded,
+                            title: 'Sin resultados',
+                            message: 'Revisá la búsqueda o el filtro de año.',
+                          )
+                        else
+                          for (final entry in groups.entries) ...[
+                            SeparadorTituloAtlassian(
+                              title: '${entry.key}° año',
+                              subtitle: '${entry.value.length} materias',
+                            ),
+                            const SizedBox(height: 10),
+                            _TiraMateriasPlanAtlassian(
+                              key: ValueKey((
+                                _career.id,
+                                _institution?.id,
+                                _year,
+                                _query,
+                                entry.key,
+                              )),
+                              subjects: entry.value,
+                              onOpen: (subject) =>
+                                  _openDetail(subject, plan.materias),
+                            ),
+                            const SizedBox(height: 22),
+                          ],
+                      ],
                     ),
                   );
-                }
-
-                final plan = snapshot.data!;
-                final filtered = _filter(plan.materias);
-                final years =
-                    plan.materias.map((item) => item.anio).toSet().toList()
-                      ..sort();
-                final groups = <int, List<Materia>>{};
-                for (final subject in filtered) {
-                  groups
-                      .putIfAbsent(subject.anio, () => <Materia>[])
-                      .add(subject);
-                }
-
-                return RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: ListView(
-                    controller: _scrollController,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(16, headerHeight + 16, 16, 96),
-                    children: [
-                      _FiltrosPlanAtlassian(
-                        selectedCareer: _career,
-                        selectedInstitution: _institution,
-                        years: years,
-                        selectedYear: _year,
-                        searchController: _searchController,
-                        onChooseCareer: _chooseCareer,
-                        onChooseInstitution: _chooseInstitution,
-                        onChooseYear: () => _chooseYear(years),
-                        onSearchChanged: (value) =>
-                            setState(() => _query = value),
-                        onClearSearch: () {
-                          _searchController.clear();
-                          setState(() => _query = '');
-                        },
-                        onResetFilters: _resetFilters,
-                      ),
-                      const SizedBox(height: 16),
-                      _ContextoPlanAtlassian(
-                        career: _career,
-                        institution: _institution,
-                        subjects: plan.materias,
-                        pdfUrl: plan.pdfUrl,
-                        onOpenPdf: plan.pdfUrl == null
-                            ? null
-                            : () => unawaited(_openPdf(context, plan.pdfUrl)),
-                        onOpenPresentation: _institution == null
-                            ? null
-                            : () => unawaited(_showInstitutionPresentation()),
-                      ),
-                      const SizedBox(height: 22),
-                      if (filtered.isEmpty)
-                        const EstadoVacioAtlassian(
-                          icon: Icons.search_off_rounded,
-                          title: 'Sin resultados',
-                          message: 'Revisá la búsqueda o el filtro de año.',
-                        )
-                      else
-                        for (final entry in groups.entries) ...[
-                          SeparadorTituloAtlassian(
-                            title: '${entry.key}° año',
-                            subtitle: '${entry.value.length} materias',
-                          ),
-                          const SizedBox(height: 10),
-                          _TiraMateriasPlanAtlassian(
-                            subjects: entry.value,
-                            onOpen: (subject) =>
-                                _openDetail(subject, plan.materias),
-                          ),
-                          const SizedBox(height: 22),
-                        ],
-                    ],
-                  ),
-                );
-              },
+                },
+              ),
             ),
-          ),
-          Align(
-            alignment: Alignment.topCenter,
-            child: header,
-          ),
-        ],
+            Align(alignment: Alignment.topCenter, child: header),
+          ],
+        ),
       ),
     );
   }
@@ -586,16 +606,20 @@ class _FiltrosPlanAtlassian extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: Text(
-                  'Explorar el plan',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+              Text(
+                'Explorar el plan',
+                style: Theme.of(context).textTheme.titleMedium,
               ),
               TextButton(
                 onPressed: onResetFilters,
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                ),
                 child: const Text('Restablecer'),
               ),
             ],
@@ -625,12 +649,14 @@ class _FiltrosPlanAtlassian extends StatelessWidget {
                 fallbackIcon: Icons.domain_outlined,
                 onTap: onChooseInstitution,
               );
-              final yearField = SelectorAtlassian(
-                label: 'Año',
-                value: selectedYear == null ? 'Todos' : '$selectedYear° año',
-                icon: Icons.calendar_view_month_outlined,
-                onTap: years.isEmpty ? null : onChooseYear,
-                enabled: years.isNotEmpty,
+              final yearField = ToqueMovimientoApp(
+                child: SelectorAtlassian(
+                  label: 'Año',
+                  value: selectedYear == null ? 'Todos' : '$selectedYear° año',
+                  icon: Icons.calendar_view_month_outlined,
+                  onTap: years.isEmpty ? null : onChooseYear,
+                  enabled: years.isNotEmpty,
+                ),
               );
 
               if (constraints.maxWidth >= 760) {
@@ -683,50 +709,52 @@ class _SelectorIdentidadPlanAtlassian extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(RadioAtlassian.medium),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 62),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(RadioAtlassian.medium),
-          border: Border.all(color: scheme.outlineVariant),
-        ),
-        child: Row(
-          children: [
-            if (showLeading) ...[
-              _LogoPlanAtlassian(
-                assetPath: assetPath,
-                fallbackIcon: fallbackIcon,
-                size: 36,
-                zoom: imageZoom,
+    return ToqueMovimientoApp(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(RadioAtlassian.medium),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 62),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: BorderRadius.circular(RadioAtlassian.medium),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              if (showLeading) ...[
+                _LogoPlanAtlassian(
+                  assetPath: assetPath,
+                  fallbackIcon: fallbackIcon,
+                  size: 36,
+                  zoom: imageZoom,
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(label, style: Theme.of(context).textTheme.labelSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: scheme.onSurfaceVariant,
+              ),
             ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(label, style: Theme.of(context).textTheme.labelSmall),
-                  const SizedBox(height: 2),
-                  Text(
-                    value,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 6),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              color: scheme.onSurfaceVariant,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -787,39 +815,69 @@ class _ContextoPlanAtlassian extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          Wrap(
-            spacing: 16,
-            runSpacing: 12,
-            children: [
-              _DatoResumenPlan(label: 'Materias', value: '${subjects.length}'),
-              _DatoResumenPlan(label: 'Años', value: '$years'),
-              _DatoResumenPlan(
-                label: 'Con correlativas',
-                value:
-                    '${subjects.where((item) => item.correlativas.isNotEmpty).length}',
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columnas =
+                  constraints.maxWidth >= 300 &&
+                      MediaQuery.textScalerOf(context).scale(12) <= 17
+                  ? 3
+                  : 2;
+              final ancho =
+                  (constraints.maxWidth - (columnas - 1) * 12) / columnas;
+              final metricas = [
+                ('Materias', '${subjects.length}'),
+                ('Años', '$years'),
+                (
+                  'Con correlativas',
+                  '${subjects.where((item) => item.correlativas.isNotEmpty).length}',
+                ),
+              ];
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final metrica in metricas)
+                    SizedBox(
+                      width: ancho,
+                      child: _DatoResumenPlan(
+                        label: metrica.$1,
+                        value: metrica.$2,
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 16),
           Divider(color: scheme.outlineVariant, height: 1),
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              if (onOpenPresentation != null)
-                BotonAtlassian(
-                  label: 'Ver presentación',
-                  icon: Icons.play_circle_outline_rounded,
-                  onPressed: onOpenPresentation,
+          Theme(
+            data: Theme.of(context).copyWith(
+              outlinedButtonTheme: OutlinedButtonThemeData(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: scheme.primary,
+                  side: BorderSide(color: scheme.outlineVariant),
                 ),
-              if (pdfUrl != null)
-                BotonAtlassian(
-                  label: 'Abrir diseño curricular',
-                  icon: Icons.picture_as_pdf_outlined,
-                  onPressed: onOpenPdf,
-                ),
-            ],
+              ),
+            ),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                if (onOpenPresentation != null)
+                  BotonAtlassian(
+                    label: 'Ver presentación',
+                    icon: Icons.play_circle_outline_rounded,
+                    onPressed: onOpenPresentation,
+                  ),
+                if (pdfUrl != null)
+                  BotonAtlassian(
+                    label: 'Abrir diseño curricular',
+                    icon: Icons.picture_as_pdf_outlined,
+                    onPressed: onOpenPdf,
+                  ),
+              ],
+            ),
           ),
         ],
       ),
@@ -848,9 +906,7 @@ class _LogoPlanAtlassian extends StatelessWidget {
       alignment: Alignment.center,
       child: Icon(
         fallbackIcon,
-        color: Theme.of(context).brightness == Brightness.dark
-            ? Colors.white
-            : scheme.primary,
+        color: scheme.onPrimaryContainer,
         size: size * 0.52,
       ),
     );
@@ -884,22 +940,33 @@ class _DatoResumenPlan extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 112,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(value, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 2),
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TweenAnimationBuilder<double>(
+          tween: Tween(
+            begin: MediaQuery.disableAnimationsOf(context)
+                ? double.parse(value)
+                : 0,
+            end: double.parse(value),
+          ),
+          duration: MovimientoApp.duracion(context, MovimientoApp.entrada),
+          curve: MovimientoApp.curva,
+          builder: (context, number, _) => Text(
+            number.round().toString(),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
     );
   }
 }
 
 class _TiraMateriasPlanAtlassian extends StatelessWidget {
   const _TiraMateriasPlanAtlassian({
+    super.key,
     required this.subjects,
     required this.onOpen,
   });
@@ -922,6 +989,7 @@ class _TiraMateriasPlanAtlassian extends StatelessWidget {
                 SizedBox(
                   width: cardWidth,
                   child: _TarjetaMateriaPlanAtlassian(
+                    ordenEntrada: index,
                     subject: subjects[index],
                     onTap: () => onOpen(subjects[index]),
                   ),
@@ -947,17 +1015,8 @@ class _AutoScrollingHorizontalStripAtlassian extends StatefulWidget {
 }
 
 class _AutoScrollingHorizontalStripAtlassianState
-    extends State<_AutoScrollingHorizontalStripAtlassian>
-    with SingleTickerProviderStateMixin {
-  static const double _pixelsPerSecond = 22;
-  static const Duration _resumeDelay = Duration(seconds: 2);
-
+    extends State<_AutoScrollingHorizontalStripAtlassian> {
   final ScrollController _controller = ScrollController();
-  late final Ticker _ticker;
-  Duration? _lastElapsed;
-  DateTime? _resumeAt;
-  bool _userPaused = false;
-  double _direction = 1;
   bool _leadingFade = false;
   bool _trailingFade = false;
 
@@ -965,14 +1024,12 @@ class _AutoScrollingHorizontalStripAtlassianState
   void initState() {
     super.initState();
     _controller.addListener(_syncFades);
-    _ticker = createTicker(_tick)..start();
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncFades());
   }
 
   @override
   void dispose() {
     _controller.removeListener(_syncFades);
-    _ticker.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -990,116 +1047,49 @@ class _AutoScrollingHorizontalStripAtlassianState
     });
   }
 
-  void _pause() {
-    _userPaused = true;
-    _resumeAt = DateTime.now().add(_resumeDelay);
-  }
-
-  void _tick(Duration elapsed) {
-    if (!_controller.hasClients) {
-      _lastElapsed = elapsed;
-      return;
-    }
-    final position = _controller.position;
-    if (!position.hasPixels || position.maxScrollExtent <= 0) {
-      _lastElapsed = elapsed;
-      return;
-    }
-    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
-      _lastElapsed = elapsed;
-      return;
-    }
-    if (_userPaused) {
-      if (_resumeAt != null && DateTime.now().isAfter(_resumeAt!)) {
-        _userPaused = false;
-        _resumeAt = null;
-      } else {
-        _lastElapsed = elapsed;
-        return;
-      }
-    }
-    final last = _lastElapsed;
-    _lastElapsed = elapsed;
-    if (last == null) return;
-    final seconds =
-        (elapsed - last).inMicroseconds / Duration.microsecondsPerSecond;
-    if (seconds <= 0) return;
-    var next = position.pixels + _pixelsPerSecond * seconds * _direction;
-    if (next >= position.maxScrollExtent) {
-      next = position.maxScrollExtent;
-      _direction = -1;
-    } else if (next <= position.minScrollExtent) {
-      next = position.minScrollExtent;
-      _direction = 1;
-    }
-    if ((next - position.pixels).abs() > 0.01) {
-      _controller.jumpTo(next);
-    }
-  }
-
-  bool _handleNotification(ScrollNotification notification) {
-    if (notification.metrics.axis != Axis.horizontal) return false;
-    if (notification is ScrollStartNotification &&
-        notification.dragDetails != null) {
-      _pause();
-    } else if (notification is ScrollUpdateNotification &&
-        notification.dragDetails != null) {
-      _pause();
-    } else if (notification is UserScrollNotification &&
-        notification.direction != ScrollDirection.idle) {
-      _pause();
-    } else if (notification is ScrollEndNotification) {
-      _resumeAt = DateTime.now().add(_resumeDelay);
-    }
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
     final background = Theme.of(context).scaffoldBackgroundColor;
     const fadeWidth = 30.0;
-    return NotificationListener<ScrollNotification>(
-      onNotification: _handleNotification,
-      child: ClipRect(
-        child: Stack(
-          children: [
-            SingleChildScrollView(
-              controller: _controller,
-              scrollDirection: Axis.horizontal,
-              child: widget.child,
+    return ClipRect(
+      child: Stack(
+        children: [
+          SingleChildScrollView(
+            controller: _controller,
+            scrollDirection: Axis.horizontal,
+            child: widget.child,
+          ),
+          if (_leadingFade)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: fadeWidth,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [background, background.withValues(alpha: 0)],
+                  ),
+                ),
+              ),
             ),
-            if (_leadingFade)
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: fadeWidth,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [background, background.withValues(alpha: 0)],
-                    ),
+          if (_trailingFade)
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: fadeWidth,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerRight,
+                    end: Alignment.centerLeft,
+                    colors: [background, background.withValues(alpha: 0)],
                   ),
                 ),
               ),
-            if (_trailingFade)
-              Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: fadeWidth,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerRight,
-                      end: Alignment.centerLeft,
-                      colors: [background, background.withValues(alpha: 0)],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -1109,28 +1099,34 @@ class _TarjetaMateriaPlanAtlassian extends StatelessWidget {
   const _TarjetaMateriaPlanAtlassian({
     required this.subject,
     required this.onTap,
+    this.ordenEntrada = 0,
   });
 
   final Materia subject;
   final VoidCallback onTap;
+  final int ordenEntrada;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return PanelAtlassian(
+      ordenEntrada: ordenEntrada,
       onTap: onTap,
       padding: const EdgeInsets.all(14),
-      child: SizedBox(
-        height: 146,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 170),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
                   constraints: const BoxConstraints(minWidth: 42),
-                  height: 34,
-                  padding: const EdgeInsets.symmetric(horizontal: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 8,
+                  ),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: scheme.primaryContainer,
@@ -1143,9 +1139,7 @@ class _TarjetaMateriaPlanAtlassian extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : scheme.primary,
+                      color: scheme.onPrimaryContainer,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1161,21 +1155,21 @@ class _TarjetaMateriaPlanAtlassian extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               subject.displayNombre,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.titleSmall,
             ),
-            const Spacer(),
+            const SizedBox(height: 16),
             Wrap(
               spacing: 6,
               runSpacing: 5,
               children: [
                 if (subject.formato.trim().isNotEmpty)
-                  LozengeAtlassian(label: subject.formato),
+                  EtiquetaAcademicaAtlassian(label: subject.formato),
                 if (subject.cuatri != null)
-                  LozengeAtlassian(label: '${subject.cuatri}° cuatrimestre'),
+                  EtiquetaAcademicaAtlassian(
+                    label: '${subject.cuatri}° cuatrimestre',
+                  ),
                 if (subject.correlativas.isNotEmpty)
-                  LozengeAtlassian(
+                  EtiquetaAcademicaAtlassian(
                     label: '${subject.correlativas.length} correlativas',
                     appearance: AparienciaLozengeAtlassian.brand,
                   ),
@@ -1201,7 +1195,10 @@ class PantallaDetallePlanAtlassian extends StatelessWidget {
   final String careerName;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      TemaHerramientasApp(builder: _contenido);
+
+  Widget _contenido(BuildContext context) {
     final byId = <String, Materia>{
       for (final item in allSubjects) item.id: item,
     };
@@ -1215,128 +1212,130 @@ class PantallaDetallePlanAtlassian extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Column(
-        children: [
-          EncabezadoPaginaAtlassian(
-            title: 'Detalle de materia',
-            subtitle: careerName,
-            centerTitle: true,
-            leading: BotonIconoAtlassian(
-              icon: Icons.arrow_back_rounded,
-              tooltip: 'Volver',
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                120 + MediaQuery.paddingOf(context).bottom,
+      body: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          children: [
+            EncabezadoPaginaAtlassian(
+              title: 'Detalle de materia',
+              subtitle: careerName,
+              centerTitle: true,
+              leading: BotonIconoAtlassian(
+                icon: Icons.arrow_back_rounded,
+                tooltip: 'Volver',
+                onPressed: () => volverPantallaAtlassian(context),
               ),
-              children: [
-                PanelAtlassian(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          LozengeAtlassian(
-                            label: '${subject.anio}° año',
-                            appearance: AparienciaLozengeAtlassian.brand,
-                          ),
-                          LozengeAtlassian(label: subject.formato),
-                          if (subject.tipo.trim().isNotEmpty)
-                            LozengeAtlassian(label: subject.tipo),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: Text(
-                          subject.displayNombre,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.headlineSmall,
-                        ),
-                      ),
-                      if (subject.codigo.trim().isNotEmpty) ...[
-                        const SizedBox(height: 5),
-                        Text(
-                          subject.codigo,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                PanelAtlassian(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      _DatoPlanDetalle(
-                        label: 'Régimen',
-                        value: subject.formato,
-                      ),
-                      const Divider(height: 1),
-                      _DatoPlanDetalle(
-                        label: 'Cuatrimestre',
-                        value: subject.cuatri == null
-                            ? 'Anual'
-                            : '${subject.cuatri}°',
-                      ),
-                      if ((subject.horas ?? '').trim().isNotEmpty) ...[
-                        const Divider(height: 1),
-                        _DatoPlanDetalle(label: 'Horas', value: subject.horas!),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SeparadorTituloAtlassian(
-                  title: 'Correlativas',
-                  subtitle: prerequisites.isEmpty
-                      ? 'Sin requisitos previos'
-                      : '${prerequisites.length} materias',
-                ),
-                const SizedBox(height: 8),
-                if (prerequisites.isEmpty)
-                  const MensajeSeccionAtlassian(
-                    title: 'Sin correlativas',
-                    message:
-                        'La materia no registra requisitos previos en el plan.',
-                    icon: Icons.check_circle_outline_rounded,
-                    appearance: AparienciaLozengeAtlassian.success,
-                  )
-                else
-                  _ListaRelacionMateriasAtlassian(subjects: prerequisites),
-                const SizedBox(height: 20),
-                SeparadorTituloAtlassian(
-                  title: 'Habilita',
-                  subtitle: dependents.isEmpty
-                      ? 'Sin materias posteriores'
-                      : '${dependents.length} materias',
-                ),
-                const SizedBox(height: 8),
-                if (dependents.isEmpty)
-                  const MensajeSeccionAtlassian(
-                    title: 'Sin dependencias',
-                    message:
-                        'Ninguna materia del plan la registra como correlativa.',
-                    appearance: AparienciaLozengeAtlassian.neutral,
-                    icon: Icons.info_outline_rounded,
-                  )
-                else
-                  _ListaRelacionMateriasAtlassian(subjects: dependents),
-                const SizedBox(height: 48),
-              ],
             ),
-          ),
-        ],
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                children: [
+                  PanelAtlassian(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            EtiquetaAcademicaAtlassian(
+                              label: '${subject.anio}° año',
+                              appearance: AparienciaLozengeAtlassian.brand,
+                            ),
+                            EtiquetaAcademicaAtlassian(label: subject.formato),
+                            if (subject.tipo.trim().isNotEmpty)
+                              EtiquetaAcademicaAtlassian(label: subject.tipo),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: Text(
+                            subject.displayNombre,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
+                        ),
+                        if (subject.codigo.trim().isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            subject.codigo,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  PanelAtlassian(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        _DatoPlanDetalle(
+                          label: 'Régimen',
+                          value: subject.formato,
+                        ),
+                        const Divider(height: 1),
+                        _DatoPlanDetalle(
+                          label: 'Cuatrimestre',
+                          value: subject.cuatri == null
+                              ? 'Anual'
+                              : '${subject.cuatri}°',
+                        ),
+                        if ((subject.horas ?? '').trim().isNotEmpty) ...[
+                          const Divider(height: 1),
+                          _DatoPlanDetalle(
+                            label: 'Horas',
+                            value: subject.horas!,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SeparadorTituloAtlassian(
+                    title: 'Correlativas',
+                    subtitle: prerequisites.isEmpty
+                        ? 'Sin requisitos previos'
+                        : '${prerequisites.length} materias',
+                  ),
+                  const SizedBox(height: 8),
+                  if (prerequisites.isEmpty)
+                    const MensajeAcademicoAtlassian(
+                      title: 'Sin correlativas',
+                      message:
+                          'La materia no registra requisitos previos en el plan.',
+                      icon: Icons.check_circle_outline_rounded,
+                      appearance: AparienciaLozengeAtlassian.success,
+                    )
+                  else
+                    _ListaRelacionMateriasAtlassian(subjects: prerequisites),
+                  const SizedBox(height: 20),
+                  SeparadorTituloAtlassian(
+                    title: 'Habilita',
+                    subtitle: dependents.isEmpty
+                        ? 'Sin materias posteriores'
+                        : '${dependents.length} materias',
+                  ),
+                  const SizedBox(height: 8),
+                  if (dependents.isEmpty)
+                    const MensajeAcademicoAtlassian(
+                      title: 'Sin dependencias',
+                      message:
+                          'Ninguna materia del plan la registra como correlativa.',
+                      appearance: AparienciaLozengeAtlassian.neutral,
+                      icon: Icons.info_outline_rounded,
+                    )
+                  else
+                    _ListaRelacionMateriasAtlassian(subjects: dependents),
+                  const SizedBox(height: 48),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1356,20 +1355,31 @@ class _ListaRelacionMateriasAtlassian extends StatelessWidget {
           for (var index = 0; index < subjects.length; index++) ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Row(
-                children: [
-                  LozengeAtlassian(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final etiqueta = EtiquetaAcademicaAtlassian(
                     label: '${subjects[index].anio}° año',
                     appearance: AparienciaLozengeAtlassian.brand,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      subjects[index].displayNombre,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                ],
+                  );
+                  final nombre = Text(
+                    subjects[index].displayNombre,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  );
+                  if (constraints.maxWidth < 380 ||
+                      MediaQuery.textScalerOf(context).scale(14) > 20) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [etiqueta, const SizedBox(height: 8), nombre],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      etiqueta,
+                      const SizedBox(width: 10),
+                      Expanded(child: nombre),
+                    ],
+                  );
+                },
               ),
             ),
             if (index != subjects.length - 1) const Divider(height: 1),
@@ -1382,27 +1392,11 @@ class _ListaRelacionMateriasAtlassian extends StatelessWidget {
 
 class _DatoPlanDetalle extends StatelessWidget {
   const _DatoPlanDetalle({required this.label, required this.value});
-
   final String label;
   final String value;
-
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(label, style: Theme.of(context).textTheme.labelMedium),
-          ),
-          Expanded(
-            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      FilaDatoAcademicoAtlassian(label: label, value: value);
 }
 
 String _normalize(String value) {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../compartido/proveedores/estado_app.dart';
 
+import '../pantalla/componentes/contenido_animado_calculadora.dart';
 import 'panel_estilos.dart';
 import 'panel_pd_especiales.dart';
 import 'panel_requisitos.dart';
@@ -13,8 +14,9 @@ class PanelEvaluacion extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final plan =
-        ref.watch(proveedorPlan).maybeWhen(data: (p) => p, orElse: () => null);
+    final plan = ref
+        .watch(proveedorPlan)
+        .maybeWhen(data: (p) => p, orElse: () => null);
     final selId = ref.watch(proveedorIdMateriaCalculadoraSeleccionada);
     final statusMap = ref.watch(proveedorMapaEstadosCorrelativas);
 
@@ -65,7 +67,21 @@ class PanelEvaluacion extends ConsumerWidget {
               children: [
                 EstilosPanel.sectionHeader(context, 'Escenario actual'),
                 const SizedBox(height: 10),
-                PanelResultado.build(context, res),
+                ContenidoAnimadoCalculadora(
+                  identidad: (
+                    selId,
+                    res.overallLabel,
+                    res.activities,
+                    res.activitiesRestricted,
+                    res.exams,
+                    res.examsRestricted,
+                    res.promotion,
+                    res.notes.join('|'),
+                    res.detailedExplanation,
+                    res.strategy,
+                  ),
+                  child: PanelResultado.build(context, res),
+                ),
               ],
             ),
           );
